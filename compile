@@ -1,0 +1,9 @@
+#!/usr/bin/env python
+"""
+A program to create decoders in other languages from specifications to another
+language.
+"""
+from bdec.tools.compile import main
+
+if __name__ == '__main__':
+    main()
