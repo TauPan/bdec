@@ -1,0 +1,216 @@
+0.6.2 (2010-02-02)
+------------------
+
+Bugfixes:
+
+* Correctly decode sequence values in the instance decoder.
+* Correctly resolve references found in conditional & constraint expressions.
+* Fix exception when we reference an unknown entry in an expression.
+* Report missing reference errors from the entry that defined the reference.
+* Improve the error messages from data errors.
+* Don't throw an exception when choosing and not enough data available.
+* Decode sequence entries with both a min and a max.
+* Correctly handle conditional references.
+* Report errors from the entry opening line & column number, not the closing location.
+* Data objects now supports non-seekable files such as stdin.
+
+
+0.6.1 (2009-12-05)
+------------------
+
+Features:
+
+* C representation for choice entries whose children don't contain data is now
+  an enum. Previously these entries generated a union without members, which is
+  invalid C/C++ (and caused memory errors with g++).
+
+Bugfixes:
+
+* Fix the 'bcompile' script (was crashing).
+* Various C compilation fixes (tests now use gcc instead of g++).
+* Fix the range of 64 bit values.
+
+
+0.6.0 (2009-11-30)
+------------------
+
+Features:
+
+* Decode floating point, signed integer, and 64 bit values.
+* Range analysis on integer types to determine suitable C-types.
+* Conditional entries.
+* Constraints on sequence values.
+
+Bugfixes:
+
+* Whitespace in xml output
+* Fix referenencing length & value of the same entry
+
+Thanks to Fernando Martín for the example patch adding signed integer and
+floating point support.
+
+
+0.5.3 (2009-04-01)
+------------------
+
+Bugfixes:
+
+ * Fix issue that could cause the wrong (lower priority) option in a choice be
+   decoded.
+ * Fix compilation of some sequence integer entries to integers instead of
+   structs.
+
+
+0.5.2 (2009-02-26)
+------------------
+
+Bugfixes:
+
+ * Correctly hide common entries that have been referenced with a hidden name.
+ * Fix out of data error reporting invalid ranges.
+ * Fix compilation errors when  entries named after keywords (such as 'int').
+ * Allow references to be used as common entries.
+
+
+0.5.1 (2009-02-18)
+------------------
+
+Bugfixes:
+
+ * Report the correct entry when there is a missing referenced entry.
+ * Fix Mako compile exception when running from an egg (ignore .pyc files).
+
+
+0.5.0 (2009-02-14)
+------------------
+
+Features:
+
+ * Compilation speedups (the jpeg spec now only takes 5 seconds to compile
+   instead of 25).
+ * Python decoding speedups (decoding a small sample pdf document now takes 10
+   seconds instead of 300).
+ * Compiled choices are now represented by an 'enum' to identify the decoded
+   option, and a 'union' for the decoded value. This requires considerably
+   less memory allocations, and is easier for client applications to use.
+ * Expressions can now directly reference choice entries to reference the
+   decoded option.
+ * New 'tips' section in the documentation. Includes the ':' hidden entry
+   hint.
+
+Bugfixes:
+ * Fix entries whose values are passed both in and out of an entry due to 
+   expressions.
+ * Fix little endian fields with an expected value in compiled specifications.
+
+
+0.4.1 (2008-11-30)
+------------------
+
+Features:
+
+ * Allow the project to be compiled to an egg (including templates).
+ * Allow the generated C to be used from C++ programs (eg: extern "c").
+ * Install 'bdecode' and 'bcompile' as part of the egg install.
+
+Bugfixes:
+
+ * Generated C language type names are consistent across runs.
+
+
+0.4.0 (2008-10-08)
+------------------
+
+Features:
+
+ * Allow common entries to be given another name.
+ * Improve readability of generated C code.
+ * Don't include unnecessary data structures in C headers.
+ * Change to LGPL license.
+ * Documentation updates.
+
+Bugfixes:
+
+ * Various fixes in C decoders.
+ * Fix mp3 specification.
+
+
+0.3.2 (2008-07-06)
+------------------
+
+Features:
+
+ * The c decoder memory is now freed
+ * Decoders are validated with valgrind
+ * A new 'release' script to simplify making new releases
+
+Bugfixes:
+
+ * Handle sequence values in the C decoder
+ * Print sequence values in the c decoder output
+ * Xml output no longer includes whitespace around decoded values
+ * Allow entry names to use the '-' character
+ * Improve speed when choosing between embedded choices
+ * Bit buffers now allocate their own memory (instead of reusing the input)
+
+
+0.3.1 (20 April 2008)
+---------------------
+
+Docs:
+
+ * Add external documentation (and tutorial), and update internal docs
+
+Format specifications:
+
+ * Add a png specification
+
+
+0.3.0 (3 April 2008)
+--------------------
+
+Core:
+
+ * Detect invalid integer encodings in a specification
+ * Nosetests can now find all unit tests
+ * Expressions are resolved after the spec as loaded (allows resolving into
+   common items not yet specified).
+ * Referenced items can no longer use 'end-sequenceof'
+
+Format specifications:
+
+ * Add a basic asf specification (wma/wmv)
+ * Add boolean type (pdf)
+ * Limit possible comment characters (pdf)
+ * Add test data files for pdf, mp3, jpeg, and vfat
+
+
+0.2.0 (17 September 2007)
+-------------------------
+
+Core:
+
+ * Add a 'file' tool that attempts to identify the format of a binary file.
+ * Support efficient decoding of files (the whole file is no longer read into
+   memory).
+
+Format specifications:
+
+ * More complete pdf protocl specification.
+ * Fixes to 'mp3' and 'vfat' specifications.
+
+
+0.1.1 (8 August 2007)
+---------------------
+
+Initial standalone release of bdec library. Allows complex specifications
+to be written that can be automatically decoded. The included example
+specifications include;
+
+ * pdf documents
+ * mp3 and jpg media files
+ * fat12/fat16/fat32 filesystems
+
+Encoding is supported only for very basic specifications (no use of
+expressions).
+
