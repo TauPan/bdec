@@ -44,7 +44,7 @@ _README = os.path.join(root_path, 'README')
 _CHANGELOG = os.path.join(root_path, 'CHANGELOG')
 
 website_dir = os.path.join(root_path, '..', 'website', 'website.integ')
-project_dir = os.path.join(website_dir, 'html', 'projects', 'bdec')
+project_dir = os.path.join(root_path, '..', 'protocollogic', 'protocollogic.com', 'html')
 freshmeat_pass = os.path.join(website_dir, 'freshmeat.txt')
 
 def _check_copyright_statements(subdirs):
@@ -126,7 +126,7 @@ def _generate_html(contents):
     data = open(generated_readme, 'w')
     data.write(contents)
     data.close()
-    command = "%s %s" % (rst2doc, generated_readme)
+    command = "%s -t -m media %s" % (rst2doc, generated_readme)
     if os.system(command) != 0:
         sys.exit('Failed to update project html index!')
     os.remove(generated_readme)
@@ -184,7 +184,8 @@ def update_website():
     if os.path.exists(html_doc_dir):
         shutil.rmtree(html_doc_dir)
     os.rename('tempdir', html_doc_dir)
-    if os.system('bzr add "%s"' % html_doc_dir) != 0:
+
+    if os.system('git add .;git add -u .') != 0:
         sys.exit('Failed to add the updated html_doc_dir')
 
 def update_release_tarball(version):
@@ -237,8 +238,8 @@ def _edit_message(message):
     return message
 
 def commit_website(version):
-    os.chdir(website_dir)
-    if os.system('bzr diff | less') != 0:
+    os.chdir(project_dir)
+    if os.system('git diff') != 0:
         sys.exit('Stopped after reviewing changes.')
     text = raw_input('Commit website changes? [y]')
     if text and text != 'y':
@@ -246,12 +247,11 @@ def commit_website(version):
         return False
 
     # Commit the website changes
-    os.chdir(website_dir)
     message = _edit_message('Updated bdec project to version %s' % version)
     data = file('.commitmsg', 'w')
     data.write(message)
     data.close()
-    if os.system('bzr commit -F .commitmsg') != 0:
+    if os.system('git commit --template .commitmsg') != 0:
         sys.exit('Failed to commit!')
     os.remove('.commitmsg')
     return True
@@ -263,13 +263,12 @@ def send_email(version, changelog):
 
     data = open('.emailmsg', 'w')
     data.write('To: %s\r\n' % to_addr)
-    data.write('From: Henry Ludemann <bdec@hl.id.au>\r\n')
-    data.write('Reply-To: Henry Ludemann <bdec@hl.id.au>\r\n')
+    data.write('From: Henry Ludemann <henry@protocollogic.com>\r\n')
     data.write('Subject: Bdec %s released\r\n' % version)
     data.write('\r\n')
     data.write('Version %s of the bdec decoder has been released. The changes in this version are;\r\n\r\n' % version)
     data.write(changelog)
-    data.write('\r\n\r\nDownload: http://www.hl.id.au/projects/bdec/#download')
+    data.write('\r\n\r\nDownload: http://www.protocollogic.com/#download')
     data.close()
     if os.system('vi .emailmsg') != 0:
         sys.exit('Stopping due to edit email message failure')
@@ -286,7 +285,7 @@ def send_email(version, changelog):
         smtp.starttls()
         smtp.ehlo()
         smtp.login(user, password)
-        smtp.sendmail('lists@hl.id.au', to_addr, message)
+        smtp.sendmail('henry@protocollogic.com', to_addr, message)
         smtp.quit()
     except smtplib.SMTPAuthenticationError, ex:
         print 'Authenticion error!', ex
@@ -393,8 +392,8 @@ def notify(version, changelog, freshmeat_auth=_get_freshmeat_auth_code,
 def upload():
     print "Uploading to the server..."
     while 1:
-        os.chdir(website_dir)
-        command = "./upload ftp://ftp.hl.id.au"
+        os.chdir(project_dir)
+        command = "../../google_appengine/appcfg.py update ../"
         if os.system(command) == 0:
             break
         text = raw_input('Failed to upload to the server! Try again? [y]')
