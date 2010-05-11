@@ -19,43 +19,41 @@
 import logging
 import sys
 
+from optparse import OptionParser
+
 import bdec
 import bdec.data as dt
 import bdec.inspect.param
 import bdec.spec.xmlspec as xmlspec
 import bdec.output.xmlout as xmlout
 
-def _parse_args():
-    spec = None
+def parse_arguments():
+    usage = "usage: %prog [-lv] <specification> [binary]"
+    parser = OptionParser(usage=usage)
+    parser.add_option("-v", "--verbose", dest="verbose",
+                      help="gives more verbose output", default=False)
+# TODO: give better help text when understood
+    parser.add_option("-l", "--log", dest="log",
+                      help="do logging", default=False)
+    (options, args) = parser.parse_args()
+    if len(args) < 1:
+        parser.error("No specification and binary files given. Please review --help.")
+    elif len(args) > 2:
+        parser.error("Too many arguments. Please review --help.")
+    spec = args[0]
     binary = None
-    verbose = False
-    log = False
-    for arg in sys.argv[1:]:
-        if arg == '--verbose':
-            verbose = True
-        elif arg == "-l":
-            log = True
-        elif spec is None:
-            spec = arg
-        elif binary is None:
-            binary = file(arg, 'rb')
-        else:
-            sys.exit('Too many arguments!')
-
-    if log:
-        logging.basicConfig(level=logging.INFO)
-
-    if spec is None:
-        sys.exit('Specification not set!')
-
-    if binary is None:
+    if len(args) == 2:
+        binary = file(args[1], 'rb')
+    else:
         binary = sys.stdin
-
+    if options.log:
+        logging.basicConfig(level=logging.INFO)
+    verbose = options.verbose
     return (spec, binary, verbose)
 
 
 def main():
-    spec, binary, verbose = _parse_args()
+    spec, binary, verbose = parse_arguments()
     try:
         decoder, common, lookup = xmlspec.load(spec)
         bdec.spec.validate_no_input_params(decoder, lookup)
