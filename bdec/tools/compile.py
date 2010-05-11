@@ -40,9 +40,9 @@ def parse_arguments():
                       help="choose a template directory", metavar="DIR")
     (options, args) = parser.parse_args()
     if len(args) < 1:
-        parser.error("You must give at least a specification. Please review %prog --help.")
+        parser.error("You must give at least a specification. Please review --help.")
     elif len(args) > 2:
-        parser.error("Too many arguments. Please review %prog --help.")
+        parser.error("Too many arguments. Please review --help.")
     return (options, args)
 
 
