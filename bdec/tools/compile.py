@@ -20,6 +20,8 @@ import mako.exceptions
 import os
 import sys
 
+from optparse import OptionParser
+
 import bdec.spec.xmlspec
 import bdec.compiler
 
@@ -31,12 +33,25 @@ def _load_spec(filename):
         sys.exit(str(ex))
     return decoder, common, lookup
 
+def parse_arguments():
+    usage = "usage: %prog [-t <template dir>] <specification> [output dir]"
+    parser = OptionParser(usage=usage)
+    parser.add_option("-t", "--template", dest="template",
+                      help="choose a template directory", metavar="DIR")
+    (options, args) = parser.parse_args()
+    if len(args) < 1:
+        parser.error("You must give at least a specification. Please review %prog --help.")
+    elif len(args) > 2:
+        parser.error("Too many arguments. Please review %prog --help.")
+    return (options, args)
+
+
 def main():
-    if len(sys.argv) not in [2, 3]:
-        sys.exit('Usage: %s <specification> [output dir]' % sys.argv[0])
-    spec, common, lookup = _load_spec(sys.argv[1])
-    if len(sys.argv) == 3:
-        outputdir = sys.argv[2]
+    (options, args) = parse_arguments()
+    spec_file = args[0]
+    spec, common, lookup = _load_spec(spec_file)
+    if len(args) == 2:
+        outputdir = args[1]
     else:
         outputdir = os.getcwd()
 
