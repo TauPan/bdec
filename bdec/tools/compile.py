@@ -38,6 +38,8 @@ def parse_arguments():
     parser = OptionParser(usage=usage)
     parser.add_option("-t", "--template", dest="template",
                       help="choose a template directory", metavar="DIR")
+    parser.add_option("-l", "--language", dest="language",
+                      help="choose a language from the template [default='c']")
     (options, args) = parser.parse_args()
     if len(args) < 1:
         parser.error("You must give at least a specification. Please review --help.")
@@ -55,9 +57,16 @@ def main():
     else:
         outputdir = os.getcwd()
 
+    template_path = None
+    if options.template:
+        template_path = options.template
+
     language = 'c'
+    if options.language:
+        language = options.language
+
     try:
-        bdec.compiler.generate_code(spec, language, outputdir, common.itervalues())
+        bdec.compiler.generate_code(spec, language, outputdir, template_path, common.itervalues())
     except:
         sys.exit(mako.exceptions.text_error_template().render())
 

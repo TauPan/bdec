@@ -92,7 +92,7 @@ def generate(spec, common, details):
         shutil.rmtree(details.TEST_DIR)
     os.mkdir(details.TEST_DIR)
 
-    comp.generate_code(spec, details.LANGUAGE, details.TEST_DIR, common)
+    comp.generate_code(spec=spec, language=details.LANGUAGE, output_dir=details.TEST_DIR, common=common)
 
 def compile_and_run(data, details):
     """Compile a previously generated decoder, and use it to decode a data file.

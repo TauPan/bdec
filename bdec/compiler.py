@@ -45,7 +45,7 @@ def is_template(filename):
         and filename != _SETTINGS
 
 _template_cache = {}
-def _load_templates(language):
+def _load_templates(language=None, template_path=None):
     """
     Load all file templates for a given specification.
 
@@ -58,10 +58,22 @@ def _load_templates(language):
 
     common_templates  = []
     entry_templates = []
-    template_dir = 'templates/' + language
-    for filename in pkg_resources.resource_listdir('bdec', template_dir):
+    template_dir = None
+    if not language:
+        language = 'c'
+    if template_path:
+        template_dir = "%s/%s" % (template_path, language)
+        filenames = os.listdir(template_dir)
+    else:
+        template_base = 'bdec'
+        template_dir = 'templates/' + language
+        filenames = pkg_resources.resource_listdir(template_base, template_dir)
+        template_dir = pkg_resources.resource_filename(template_base, template_dir)
+    for filename in filenames:
         if is_template(filename):
-            text = pkg_resources.resource_string('bdec', '%s/%s' % (template_dir, filename))
+            fh = open("%s/%s" % (template_dir, filename), 'rb')
+            text = fh.read()
+            fh.close()
             template = mako.template.Template(text, uri=filename)
             if 'source' in filename:
                 entry_templates.append((filename, template))
@@ -317,11 +329,11 @@ def _whitespace(offset):
         return result
     return filter
 
-def generate_code(spec, language, output_dir, common_entries=[]):
+def generate_code(spec, language, output_dir, template_path=None, common_entries=[]):
     """
     Generate code to decode the given specification.
     """
-    common_templates, entry_templates = _load_templates(language)
+    common_templates, entry_templates = _load_templates(language, template_path)
     entries = set(common_entries)
     entries.add(spec)
     
