@@ -38,8 +38,11 @@ from bdec.inspect.type import VariableType, IntegerType, MultiSourceType, \
 
 
 class BadReferenceError(bdec.DecodeError):
-    def __init__(self, entry):
+    def __init__(self, entry, context=[]):
         bdec.DecodeError.__init__(self, entry)
+        for e in context:
+            assert isinstance(e, ent.Entry)
+        self.context = context
 
     def __str__(self):
         return "Can't reference %s" % (self.entry)
@@ -52,12 +55,22 @@ class BadReferenceTypeError(bdec.DecodeError):
         return "Cannot reference non integer field '%s'" % self.entry
 
 class UnknownReferenceError(BadReferenceError):
-    def __init__(self, entry, name):
-        bdec.DecodeError.__init__(self, entry)
+    def __init__(self, entry, name, entries=[]):
+        BadReferenceError.__init__(self, entry, entries)
         self.name = name
 
     def __str__(self):
         return "%s references unknown entry '%s'!" % (self.entry, self.name)
+
+class MissingExpressionReferenceError(BadReferenceError):
+    """An expression references an unknown entry."""
+    def __init__(self, entry, missing):
+        BadReferenceError.__init__(self, entry)
+        self.missing_context = missing
+
+    def __str__(self):
+        return "%s needs '%s' to decode" % (self.entry, self.missing_context)
+
 
 class _FailedToResolveError(Exception):
     def __init__(self, name):
@@ -243,13 +256,36 @@ class ExpressionParameters(_Parameters):
         self._referenced_values = set()
         self._referenced_lengths = set()
         unreferenced_entries = {}
+        entries_used = set()
         for entry in entries:
-            self._populate_references(entry, unreferenced_entries)
+            self._populate_references(entry, unreferenced_entries, entries_used)
 
+        should_have_failed = False
         for entry, references in unreferenced_entries.iteritems():
             for param in self._params[entry]:
                 if not param.types:
-                    raise UnknownReferenceError(entry, iter(references).next().name)
+                    should_have_failed = True
+                    if entry not in entries_used:
+                        # We found a top-level entry with an unknown parameter.
+                        # We only want top-level entries as this provides the
+                        # most context to the user (and if a child entry is
+                        # failing, so to will the top level entry).
+                        name = iter(references).next().name
+                        stack = self._find_child_using_param(entry, name)
+                        raise UnknownReferenceError(stack[0], name, stack[1:])
+        assert not should_have_failed, 'Found a parameter with an unknown type, ' \
+            "but didn't fail on a parent entry! Something went wrong."
+
+    def _find_child_using_param(self, entry, name):
+        """Find the child entry using the given parameter name.
+
+        Returns a list of entries from entry down to the child."""
+        for child in entry.children:
+            for param in self._params[child.entry]:
+                if param.reference.name == name:
+                    return self._find_child_using_param(child.entry, name) + [entry]
+        # None of the child entries use the parameter; it must be us.
+        return [entry]
 
     def _collect_references(self, expression):
         """
@@ -271,7 +307,7 @@ class ExpressionParameters(_Parameters):
             raise Exception("Unable to collect references from unhandled expression type '%s'!" % expression)
         return result
 
-    def _populate_references(self, entry, unreferenced_entries):
+    def _populate_references(self, entry, unreferenced_entries, entries_used):
         """
         Walk down the tree, populating the '_params', '_referenced_XXX' sets.
 
@@ -283,7 +319,8 @@ class ExpressionParameters(_Parameters):
         unreferenced_entries[entry] = set()
 
         for child in entry.children:
-            self._populate_references(child.entry, unreferenced_entries)
+            entries_used.add(child.entry)
+            self._populate_references(child.entry, unreferenced_entries, entries_used)
 
         # An entries unknown references are those referenced in any 
         # expressions, and those that are unknown in all of its children.
@@ -338,6 +375,9 @@ class ExpressionParameters(_Parameters):
         try:
             name = self._local_child_param_name[entry][child][param.reference.name]
         except KeyError:
+            # TODO: This _may_ be an output from a child that we don't use.
+            # It may also be coming from one of our input parameters?? If it's
+            # an unused, we should name it 'unused XXX'.
             name = param.reference.name
 
         # Create a new instance of the expression reference, using the new name
@@ -421,7 +461,8 @@ class ExpressionParameters(_Parameters):
                     self._params[child.entry].add(_VariableParam(child_reference, Param.OUT, result))
                     break
             else:
-                raise ent.MissingExpressionReferenceError(entry, reference.name)
+                # None of the children implement this name.
+                raise MissingExpressionReferenceError(entry, reference.name)
         else:
             # We don't know how to resolve a reference to this type of entry!
             raise BadReferenceError(entry)
@@ -536,7 +577,7 @@ class DataChecker:
             # We are visible; check to see if either we (or any of our
             # children) contain data.
             for child in entry.children:
-                if self._has_data[child.entry]:
+                if not ent.is_hidden(child.name) and self._has_data[child.entry]:
                     break
             else:
                 # None of the children contain data; this entry will only contain
