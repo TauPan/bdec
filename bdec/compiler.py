@@ -388,5 +388,6 @@ def generate_code(spec, language, output_dir, template_path=None, common_entries
     for filename, template in entry_templates:
         for entry in entries:
             lookup['entry'] = entry
-            _generate_template(output_dir, utils.filename(filename.replace('source', entry.name)), lookup, template)
+            extension = os.path.splitext(filename)[1]
+            _generate_template(output_dir, utils.filename(entry.name) + extension, lookup, template)
 
