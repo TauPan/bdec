@@ -21,7 +21,7 @@ import xml.sax
 from xml.sax import saxutils
 
 import bdec.choice as chc
-from bdec.constraints import Minimum, Maximum, Equals
+from bdec.constraints import Minimum, Maximum, Equals, NotEquals
 import bdec.data as dt
 import bdec.entry as ent
 import bdec.expression as exp
@@ -206,6 +206,9 @@ class _Handler(xml.sax.handler.ContentHandler):
                 entry.set_parent(optional)
             entry = optional
 
+            self.lookup[not_present] = (self._filename, lineno, colno)
+            self.lookup[optional] = (self._filename, lineno, colno)
+
         if entry is not None:
             if self._end_sequenceof:
                 # There is a parent sequence of object that must stop when
@@ -373,11 +376,16 @@ def _load_from_file(file, filename):
             prm.ExpressionParameters(entries)])
     except prm.BadReferenceError, ex:
         class Locator:
+            def _src(self):
+                try:
+                    return handler.lookup[ex.entry]
+                except KeyError:
+                    return ('unknown', 0, 0)
             def getLineNumber(self):
-                return handler.lookup[ex.entry][1]
+                return self._src()[1]
             def getColumnNumber(self):
-                return handler.lookup[ex.entry][2]
-        context = [(handler.lookup[e] + (str(e),)) for e in ex.context]
+                return self._src()[2]
+        context = [(handler.lookup[e] + (str(e),)) for e in ex.context if ex.entry in handler.lookup]
         raise XmlExpressionError(ex, filename, Locator(), context)
     return (handler.decoder, handler.common_entries, handler.lookup)
 
@@ -504,8 +512,7 @@ def _write_entry(gen, entry, common, end_entry):
                 attributes.append(('value', value))
             else:
                 attributes.append(('expected', value))
-        elif isinstance(constraint, bdec.constraints.NotEquals):
-            # HACK: Print 'not equal' entries...
+        elif isinstance(constraint, NotEquals):
             attributes.append(('not_equal', str(constraint.limit)))
         else:
             raise NotImplementedError("Don't know how to save contraint '%s'!" % constraint)

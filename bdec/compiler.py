@@ -33,9 +33,50 @@ import bdec.entry as ent
 import bdec.inspect.param as prm
 import bdec.output.xmlout
 
+class TemplateDir:
+    """Class representing a template directory."""
+    def listdir(self, dir):
+        raise NotImplementedError()
+
+    def read(self, filename):
+        raise NotImplementedError()
+
+
+class BuiltinTemplate(TemplateDir):
+    """Class to read a builtin template using pkg_resources."""
+    def __init__(self, name):
+        self.directory = os.path.join('templates', name)
+
+    def listdir(self):
+        return pkg_resources.resource_listdir('bdec', self.directory)
+
+    def read(self, filename):
+        return pkg_resources.resource_string('bdec',
+                os.path.join(self.directory, filename))
+
+class FilesystemTemplate(TemplateDir):
+    def __init__(self, directory):
+        self.directory = directory
+
+    def listdir(self):
+        return os.listdir(self.directory)
+
+    def read(self, filename):
+        input = open(os.path.join(self.directory, filename), 'r')
+        contents = input.read()
+        input.close()
+        return contents
+
+
 class SettingsError(Exception):
     "An error raised when the settings file is incorrect."
     pass
+
+class Templates:
+    def __init__(self, common, entries, settings):
+        self.common = common
+        self.entries = entries
+        self.settings = settings
 
 _SETTINGS = "settings.py"
 
@@ -44,43 +85,26 @@ def is_template(filename):
     return not filename.startswith('.') and not filename.endswith('.pyc') \
         and filename != _SETTINGS
 
-_template_cache = {}
-def _load_templates(language=None, template_path=None):
+def load_templates(template_dir):
     """
     Load all file templates for a given specification.
 
     Returns a tuple containing (common file templates, entry specific templates),
     where every template is a tuple containing (name, mako template).
     """
-    # We cache the results, as it sped up the tests by about 3x.
-    if language in _template_cache:
-        return _template_cache[language]
-
     common_templates  = []
     entry_templates = []
-    template_dir = None
-    if not language:
-        language = 'c'
-    if template_path:
-        template_dir = "%s/%s" % (template_path, language)
-        filenames = os.listdir(template_dir)
-    else:
-        template_base = 'bdec'
-        template_dir = 'templates/' + language
-        filenames = pkg_resources.resource_listdir(template_base, template_dir)
-        template_dir = pkg_resources.resource_filename(template_base, template_dir)
-    for filename in filenames:
+    for filename in template_dir.listdir():
         if is_template(filename):
-            fh = open("%s/%s" % (template_dir, filename), 'rb')
-            text = fh.read()
-            fh.close()
+            text = template_dir.read(filename)
             template = mako.template.Template(text, uri=filename)
             if 'source' in filename:
                 entry_templates.append((filename, template))
             else:
                 common_templates.append((filename, template))
-    _template_cache[language] = (common_templates, entry_templates)
-    return (common_templates, entry_templates)
+
+    config_file = template_dir.read(_SETTINGS)
+    return Templates(common_templates, entry_templates, config_file)
 
 def _generate_template(output_dir, filename, lookup, template):
     output = file(os.path.join(output_dir, filename), 'w')
@@ -143,10 +167,8 @@ class _Settings:
     _REQUIRED_SETTINGS = ['keywords']
 
     @staticmethod
-    def load(language, globals):
-        path = 'templates/%s/settings.py' % language
-        config_file = pkg_resources.resource_stream('bdec', path).read()
-        code = compile(config_file, path, 'exec')
+    def load(config_file, globals):
+        code = compile(config_file, _SETTINGS, 'exec')
         eval(code, globals)
         settings = _Settings()
         for key in globals:
@@ -329,11 +351,10 @@ def _whitespace(offset):
         return result
     return filter
 
-def generate_code(spec, language, output_dir, template_path=None, common_entries=[]):
+def generate_code(spec, templates, output_dir, common_entries=[]):
     """
     Generate code to decode the given specification.
     """
-    common_templates, entry_templates = _load_templates(language, template_path)
     entries = set(common_entries)
     entries.add(spec)
     
@@ -345,7 +366,7 @@ def generate_code(spec, language, output_dir, template_path=None, common_entries
 
     lookup = {}
     data_checker = prm.DataChecker(entries)
-    lookup['settings'] = _Settings.load(language, lookup)
+    lookup['settings'] = _Settings.load(templates.settings, lookup)
     utils = _Utils(entries, lookup['settings'])
 
     params = prm.CompoundParameters([
@@ -383,9 +404,9 @@ def generate_code(spec, language, output_dir, template_path=None, common_entries
     lookup['ws'] = _whitespace
     lookup['xmlname'] = bdec.output.xmlout.escape_name
 
-    for filename, template in common_templates:
+    for filename, template in templates.common:
         _generate_template(output_dir, filename, lookup, template)
-    for filename, template in entry_templates:
+    for filename, template in templates.entries:
         for entry in entries:
             lookup['entry'] = entry
             extension = os.path.splitext(filename)[1]

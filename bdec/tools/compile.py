@@ -16,6 +16,7 @@
 #   License along with this library; if not, see
 #   <http://www.gnu.org/licenses/>.
 
+import getopt
 import mako.exceptions
 import os
 import sys
@@ -34,13 +35,25 @@ def _load_spec(filename):
     return decoder, common, lookup
 
 def parse_arguments():
-    usage = "usage: %prog [-t <template dir>] <specification> [output dir]"
+    usage = """
+   %prog [-V] [-t <template dir>] <spec_filename> [output_dir]
+
+Compile bdec specifications into language specific decoders
+
+Arguments:'
+   spec_filename -- The filename of the specification to be compiled
+   output_dir -- The directory to save the generated source code. If not
+                 specified the current working directory will be used"""
     parser = OptionParser(usage=usage)
     parser.add_option("-t", "--template", dest="template",
-                      help="choose a template directory", metavar="DIR")
-    parser.add_option("-l", "--language", dest="language",
-                      help="choose a language from the template [default='c']")
+                      help="Set the template to compile. If there is a directory with the specified name, it will be used as the template directory. Otherwise it will use the internal template with the specified name. If not specified a C language decoder will be compiled")
+    parser.add_option("-V", "--version", dest="version", action="store_true",
+                      help="Print the version of the bdec compiler and exit",
+                      default=False)
     (options, args) = parser.parse_args()
+    if options.version:
+        print bdec.__version__
+        sys.exit(0)
     if len(args) < 1:
         parser.error("You must give at least a specification. Please review --help.")
     elif len(args) > 2:
@@ -49,24 +62,29 @@ def parse_arguments():
 
 
 def main():
+    outputdir = None
+    template_dir = None
+
     (options, args) = parse_arguments()
-    spec_file = args[0]
-    spec, common, lookup = _load_spec(spec_file)
+
+    spec, common, lookup = _load_spec(args[0])
+
     if len(args) == 2:
         outputdir = args[1]
     else:
         outputdir = os.getcwd()
 
-    template_path = None
     if options.template:
-        template_path = options.template
-
-    language = 'c'
-    if options.language:
-        language = options.language
+        if os.path.exists(arg):
+            template_dir = bdec.compiler.FilesystemTemplate(arg)
+        else:
+            template_dir = bdec.compiler.BuiltinTemplate(arg)
+    else:
+        template_dir = bdec.compiler.BuiltinTemplate('c')
 
     try:
-        bdec.compiler.generate_code(spec, language, outputdir, template_path, common.itervalues())
+        templates = bdec.compiler.load_templates(template_dir)
+        bdec.compiler.generate_code(spec, templates, outputdir, common.itervalues())
     except:
         sys.exit(mako.exceptions.text_error_template().render())
 

@@ -28,14 +28,28 @@ import bdec.output.xmlout as xmlout
 from bdec.spec import load
 
 def parse_arguments():
-    usage = "usage: %prog [-lv] <specification> [binary]"
+    usage = """
+   %prog [-lvV] <spec_filename> [data_filename]
+
+Decode a file given a bdec specification to xml
+  
+Arguments:'
+   spec_filename -- The filename of the specification to be compiled
+   data_filename -- The file we want to decode. If not specified, it 
+                    will decode the data from stdin"""
     parser = OptionParser(usage=usage)
-    parser.add_option("-v", "--verbose", dest="verbose",
-                      help="gives more verbose output", default=False)
-# TODO: give better help text when understood
-    parser.add_option("-l", "--log", dest="log",
-                      help="do logging", default=False)
+    parser.add_option("-v", "--verbose", dest="verbose", action="store_true",
+                      help="Include hidden entries and raw data in the decoded output",
+                      default=False)
+    parser.add_option("-l", "--log", dest="log", action="store_true",
+                      help="Log status messages", default=False)
+    parser.add_option("-V", "--version", dest="version", action="store_true",
+                      help="Print the version of the bdec compiler and exit",
+                      default=False)
     (options, args) = parser.parse_args()
+    if options.version:
+        print bdec.__version__
+        sys.exit(0)
     if len(args) < 1:
         parser.error("No specification and binary files given. Please review --help.")
     elif len(args) > 2:
