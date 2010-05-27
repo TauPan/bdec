@@ -102,12 +102,8 @@ def generate(spec, common, details):
         shutil.rmtree(details.TEST_DIR)
     os.mkdir(details.TEST_DIR)
 
-<<<<<<< HEAD
-    comp.generate_code(spec=spec, language=details.LANGUAGE, output_dir=details.TEST_DIR, common=common)
-=======
     comp.generate_code(spec, _load_templates_from_cache(details.LANGUAGE),
             details.TEST_DIR, common)
->>>>>>> origin/github-master
 
 def compile_and_run(data, details):
     """Compile a previously generated decoder, and use it to decode a data file.
