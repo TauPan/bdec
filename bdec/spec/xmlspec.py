@@ -329,7 +329,7 @@ class _Handler(xml.sax.handler.ContentHandler):
         if attributes.has_key('value'):
             # A sequence can have a value derived from its children...
             value = self._parse_expression(attributes['value'])
-        return seq.Sequence(name, children, value, length, attributes)
+        return seq.Sequence(name, children, value, length, attributes=attributes)
 
     def _choice(self, attributes, children, name, length, breaks):
         if len(children) == 0:
