@@ -22,42 +22,61 @@ import sys
 
 from optparse import OptionParser
 
-import bdec.spec.xmlspec
+from bdec.spec import load_specs
 import bdec.compiler
 
-def _load_spec(filename):
-    """Load the protocol specification. """
-    try:
-        decoder, common, lookup = bdec.spec.xmlspec.load(filename)
-    except bdec.spec.LoadError, ex:
-        sys.exit(str(ex))
-    return decoder, common, lookup
 
 def parse_arguments():
-    usage = "usage: %prog [-t <template dir>] <specification> [output dir]"
+    usage = """
+   %prog [options] <spec_filename> [spec_filename] ...
+
+Compile bdec specifications into language specific decoders
+
+Arguments:'
+   spec_filename -- The filename of the specification to be compiled
+"""
     parser = OptionParser(usage=usage)
-    parser.add_option("-t", "--template", dest="template",
-                      help="choose a template directory", metavar="DIR")
+    parser.add_option("-t", "--template", dest="template", default=None,
+                      help="Set the template to compile. If there is a directory with the specified name, it will be used as the template directory. Otherwise it will use the internal template with the specified name. If not specified a C language decoder will be compiled")
+    parser.add_option("-V", "--version", dest="version", action="store_true",
+                      help="Print the version of the bdec compiler and exit",
+                      default=False)
+    parser.add_option("-m", "--main", dest="main", default=None,
+                      help="Specify the entry to be use as the default decoder.")
+    parser.add_option("-r", "--remove-unused", dest="remove_unused",
+                      action="store_true", default=False,
+                      help="Remove any entries that are not referenced from the main entry.")
+    parser.add_option("-d", "--directory", dest="directory", default=os.getcwd(),
+                      help="Directory to save the generated source code. Defaults to %s." % os.getcwd())
     (options, args) = parser.parse_args()
+    if options.version:
+        print bdec.__version__
+        sys.exit(0)
     if len(args) < 1:
-        parser.error("You must give at least a specification. Please review --help.")
-    elif len(args) > 2:
-        parser.error("Too many arguments. Please review --help.")
+        parser.error("You must give at least one specification. Please review --help.")
     return (options, args)
 
 
 def main():
     (options, args) = parse_arguments()
-    spec_file = args[0]
-    spec, common, lookup = _load_spec(spec_file)
-    if len(args) == 2:
-        outputdir = args[1]
-    else:
-        outputdir = os.getcwd()
 
-    language = 'c'
+    template_dir = None
+    if options.template:
+        if os.path.exists(arg):
+            template_dir = bdec.compiler.FilesystemTemplate(arg)
+        else:
+            template_dir = bdec.compiler.BuiltinTemplate(arg)
+    else:
+        template_dir = bdec.compiler.BuiltinTemplate('c')
+
     try:
-        bdec.compiler.generate_code(spec, language, outputdir, common.itervalues())
+        spec, common, lookup = load_specs([(s, None, None) for s in args], options.main, options.remove_unused)
+    except bdec.spec.LoadError, ex:
+        sys.exit(str(ex))
+
+    try:
+        templates = bdec.compiler.load_templates(template_dir)
+        bdec.compiler.generate_code(spec, templates, options.directory, common)
     except:
         sys.exit(mako.exceptions.text_error_template().render())
 
