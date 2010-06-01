@@ -25,18 +25,17 @@ import bdec
 import bdec.data as dt
 import bdec.inspect.param
 import bdec.output.xmlout as xmlout
-from bdec.spec import load
+from bdec.spec import load_specs
 
 def parse_arguments():
     usage = """
-   %prog [-lvV] <spec_filename> [data_filename]
+   %prog [options] <spec_filename> [spec_filename] ...
 
 Decode a file given a bdec specification to xml
   
 Arguments:'
    spec_filename -- The filename of the specification to be compiled
-   data_filename -- The file we want to decode. If not specified, it 
-                    will decode the data from stdin"""
+"""
     parser = OptionParser(usage=usage)
     parser.add_option("-v", "--verbose", dest="verbose", action="store_true",
                       help="Include hidden entries and raw data in the decoded output",
@@ -46,37 +45,37 @@ Arguments:'
     parser.add_option("-V", "--version", dest="version", action="store_true",
                       help="Print the version of the bdec compiler and exit",
                       default=False)
+    parser.add_option("-f", "--filename", dest="filename", default=None,
+                      help="Decode from filename instead of stdin.")
+    parser.add_option("-m", "--main", dest="main", default=None,
+                      help="Specify the entry to be used as the decoder.")
+    parser.add_option("-r", "--remove-unused", default=False, action="store_true",
+                      help="Remove any entries that are not referenced from the main entry.")
     (options, args) = parser.parse_args()
     if options.version:
         print bdec.__version__
         sys.exit(0)
     if len(args) < 1:
-        parser.error("No specification and binary files given. Please review --help.")
-    elif len(args) > 2:
-        parser.error("Too many arguments. Please review --help.")
-    spec = args[0]
-    binary = None
-    if len(args) == 2:
-        binary = file(args[1], 'rb')
-    else:
-        binary = sys.stdin
-    if options.log:
-        logging.basicConfig(level=logging.INFO)
-    verbose = options.verbose
-    return (spec, binary, verbose)
-
+        parser.error("No specification file given. Please review --help.")
+    return (options, args)
 
 def main():
-    spec, binary, verbose = parse_arguments()
+    (options, args) = parse_arguments()
+    specs = args
+    binary = sys.stdin
+    if options.filename:
+        binary = file(options.filename, 'rb')
+    if options.log:
+        logging.basicConfig(level=logging.INFO)
+
     try:
-        decoder, common, lookup = load(spec)
-        bdec.spec.validate_no_input_params(decoder, lookup)
+        decoder, common, lookup = load_specs([(s, None, None) for s in specs], options.main, options.remove_unused)
     except bdec.spec.LoadError, ex:
         sys.exit(str(ex))
 
     data = dt.Data(binary)
     try:
-        xmlout.to_file(decoder, data, sys.stdout, verbose=verbose)
+        xmlout.to_file(decoder, data, sys.stdout, verbose=options.verbose)
     except bdec.DecodeError, ex:
         try:
             (filename, line_number, column_number) = lookup[ex.entry]
