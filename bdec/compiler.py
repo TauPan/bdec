@@ -85,6 +85,14 @@ def is_template(filename):
     return not filename.startswith('.') and not filename.endswith('.pyc') \
         and filename != _SETTINGS
 
+# preprocessor adapted from http://groups.google.com/group/mako-discuss/browse_thread/thread/c1b4e966765b55f0/2dca97ca74781479?show_docid=2dca97ca74781479&pli=1
+def _preproc(source):
+    from itertools import chain
+    source = source.replace('\\\n','')
+    lines = source.split('\n')
+    comments = ["#line %d \"${self.uri}\"" % i for i in xrange(len(lines))]
+    return "\n".join(chain(*zip(comments, lines)))
+
 def load_templates(template_dir):
     """
     Load all file templates for a given specification.
@@ -97,7 +105,7 @@ def load_templates(template_dir):
     for filename in template_dir.listdir():
         if is_template(filename):
             text = template_dir.read(filename)
-            template = mako.template.Template(text, uri=filename)
+            template = mako.template.Template(text, uri=filename, preprocessor=_preproc)
             if 'source' in filename:
                 entry_templates.append((filename, template))
             else:
@@ -152,7 +160,7 @@ class _EntryInfo(prm.CompoundParameters):
         names = self._get_name_map(entry)
         for param in prm.CompoundParameters.get_params(self, entry):
             yield prm.Param(names[param.name], param.direction, param.type)
-            
+
     def get_passed_variables(self, entry, child):
         names = self._get_name_map(entry)
         for param in prm.CompoundParameters.get_passed_variables(self, entry, child):
@@ -223,7 +231,7 @@ class _Utils:
     def iter_inner_entries(self, entry):
         """
         Iterate over all non-common entries.
-        
+
         Note that entry is also returned, even if it is a common entry.
         """
         for child in entry.children:
@@ -357,7 +365,7 @@ def generate_code(spec, templates, output_dir, common_entries=[]):
     """
     entries = set(common_entries)
     entries.add(spec)
-    
+
     # We want the entries to be in a consistent order, otherwise the name
     # escaping might choose different names for the same entry across multiple
     # runs.
