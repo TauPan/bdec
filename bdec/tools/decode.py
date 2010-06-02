@@ -1,4 +1,5 @@
-#   Copyright (C) 2008 Henry Ludemann
+#   Copyright (C) 2008-2010 Henry Ludemann
+#   Copyright (C) 2010 PRESENSE Technologies GmbH
 #
 #   This file is part of the bdec decoder library.
 #
@@ -32,7 +33,7 @@ def parse_arguments():
    %prog [options] <spec_filename> [spec_filename] ...
 
 Decode a file given a bdec specification to xml
-  
+
 Arguments:'
    spec_filename -- The filename of the specification to be compiled
 """
