@@ -48,6 +48,8 @@ Arguments:'
                       help="Remove any entries that are not referenced from the main entry.")
     parser.add_option("-d", "--directory", dest="directory", default=os.getcwd(),
                       help="Directory to save the generated source code. Defaults to %s." % os.getcwd())
+    parser.add_option("--generate-line-pragmas", dest="line_pragmas", default=False,
+                      help='Generate #line <n> \"<source file>\" pragmas for c code. These are sometimes helpful in tracking down problems in the templates, but make the generated code a lot less human-readable. Defaults to False.')
     (options, args) = parser.parse_args()
     if options.version:
         print bdec.__version__
@@ -72,7 +74,7 @@ def main():
         sys.exit(str(ex))
 
     try:
-        templates = bdec.compiler.load_templates(template_dir)
+        templates = bdec.compiler.load_templates(options)
         bdec.compiler.generate_code(spec, templates, options.directory, common)
     except:
         sys.exit(mako.exceptions.text_error_template().render())
