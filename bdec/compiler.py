@@ -102,9 +102,9 @@ def load_templates(options):
     """
     common_templates  = []
     entry_templates = []
-    for filename in options.directory.listdir():
+    for filename in options.template.listdir():
         if is_template(filename):
-            text = options.directory.read(filename)
+            text = options.template.read(filename)
             if (options.line_pragmas):
                 template = mako.template.Template(text, uri=filename, preprocessor=_preproc)
             else:
@@ -114,7 +114,7 @@ def load_templates(options):
             else:
                 common_templates.append((filename, template))
 
-    config_file = options.directory.read(_SETTINGS)
+    config_file = options.template.read(_SETTINGS)
     return Templates(common_templates, entry_templates, config_file)
 
 def _generate_template(output_dir, filename, lookup, template):

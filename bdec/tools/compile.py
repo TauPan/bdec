@@ -48,7 +48,8 @@ Arguments:'
                       help="Remove any entries that are not referenced from the main entry.")
     parser.add_option("-d", "--directory", dest="directory", default=os.getcwd(),
                       help="Directory to save the generated source code. Defaults to %s." % os.getcwd())
-    parser.add_option("--generate-line-pragmas", dest="line_pragmas", default=False,
+    parser.add_option("--generate-line-pragmas", dest="line_pragmas",
+                      action="store_true", default=False,
                       help='Generate #line <n> \"<source file>\" pragmas for c code. These are sometimes helpful in tracking down problems in the templates, but make the generated code a lot less human-readable. Defaults to False.')
     (options, args) = parser.parse_args()
     if options.version:
@@ -67,6 +68,8 @@ def main():
         template_dir = bdec.compiler.FilesystemTemplate(options.template)
     else:
         template_dir = bdec.compiler.BuiltinTemplate('c')
+
+    options.template = template_dir
 
     try:
         spec, common, lookup = load_specs([(s, None, None) for s in args], options.main, options.remove_unused)
