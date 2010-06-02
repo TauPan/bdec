@@ -61,11 +61,8 @@ def main():
     (options, args) = parse_arguments()
 
     template_dir = None
-    if options.template:
-        if os.path.exists(arg):
-            template_dir = bdec.compiler.FilesystemTemplate(arg)
-        else:
-            template_dir = bdec.compiler.BuiltinTemplate(arg)
+    if options.template and os.path.exists(options.template):
+        template_dir = bdec.compiler.FilesystemTemplate(options.template)
     else:
         template_dir = bdec.compiler.BuiltinTemplate('c')
 
