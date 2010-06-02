@@ -1,4 +1,5 @@
-#   Copyright (C) 2009 Henry Ludemann
+#   Copyright (C) 2009-2010 Henry Ludemann
+#   Copyright (C) 2010 PRESENSE Technologies GmbH
 #
 #   This file is part of the bdec decoder library.
 #
@@ -101,7 +102,7 @@ class NotEquals:
         if not isinstance(expected, Expression):
             expected = Constant(expected)
         self.limit = expected
-        self.type = '!='
+        self.type = '=='
 
     def check(self, entry, value, context):
         expected = self.limit.evaluate(context)
