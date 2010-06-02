@@ -93,7 +93,7 @@ def _preproc(source):
     comments = ["#line %d \"${self.uri}\"" % i for i in xrange(len(lines))]
     return "\n".join(chain(*zip(comments, lines)))
 
-def load_templates(template_dir):
+def load_templates(options):
     """
     Load all file templates for a given specification.
 
@@ -102,16 +102,19 @@ def load_templates(template_dir):
     """
     common_templates  = []
     entry_templates = []
-    for filename in template_dir.listdir():
+    for filename in options.directory.listdir():
         if is_template(filename):
-            text = template_dir.read(filename)
-            template = mako.template.Template(text, uri=filename, preprocessor=_preproc)
+            text = options.directory.read(filename)
+            if (options.line_pragmas):
+                template = mako.template.Template(text, uri=filename, preprocessor=_preproc)
+            else:
+                template = mako.template.Template(text, uri=filename)
             if 'source' in filename:
                 entry_templates.append((filename, template))
             else:
                 common_templates.append((filename, template))
 
-    config_file = template_dir.read(_SETTINGS)
+    config_file = options.directory.read(_SETTINGS)
     return Templates(common_templates, entry_templates, config_file)
 
 def _generate_template(output_dir, filename, lookup, template):
