@@ -37,6 +37,7 @@ extern "C" {
 #endif
 
 <%def name="c_define(entry)" >
+    <% packed = " __attribte__ ((packed))" if entry.attributes.has_key("packed") else "" %>
   %if not contains_data(entry):
 
   %elif isinstance(entry, Sequence) and not settings.is_numeric(settings.ctype(entry)):
@@ -50,7 +51,7 @@ ${settings.ctype(entry)}
   %if entry.value is not None:
     ${ctype(EntryValueType(entry))} value;
   %endif
-};
+}${packed};
   %elif isinstance(entry, Choice):
 enum ${settings.enum_type_name(entry)}
 {
@@ -58,7 +59,7 @@ enum ${settings.enum_type_name(entry)}
       <% trailing_char = ',' if i + 1 != len(entry.children) else '' %>
     ${enum_value(entry, i)}${trailing_char}
     %endfor
-};
+}${packed};
 
     %if settings.children_contain_data(entry):
 ${settings.ctype(entry)}
@@ -76,7 +77,7 @@ ${settings.ctype(entry)}
       %endif
     %endfor
     }value;
-};
+}${packed};
     %endif
   %elif isinstance(entry, SequenceOf):
 ${settings.ctype(entry)}
@@ -85,7 +86,7 @@ ${settings.ctype(entry)}
     ${settings.ctype(entry.children[0].entry)}* items;
     %endif
     unsigned int count;
-};
+}${packed};
   %endif
 </%def>
 
