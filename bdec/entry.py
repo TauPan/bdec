@@ -105,7 +105,7 @@ class Entry(object):
     directly).
     """
 
-    def __init__(self, name, length, children, constraints=[]):
+    def __init__(self, name, length, children, constraints=[], attributes=None):
         """Construct an Entry instance.
 
         children -- A list of Entry or Child instances.
@@ -127,6 +127,7 @@ class Entry(object):
         self.constraints = list(constraints)
         for constraint in self.constraints:
             assert getattr(constraint, 'check') is not None
+        self.attributes = attributes
 
     def _get_children(self):
         return self._children

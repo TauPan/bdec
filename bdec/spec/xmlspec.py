@@ -166,7 +166,7 @@ class _Handler(xml.sax.handler.ContentHandler):
                 if not ent.is_hidden(reference.name):
                     reference.name = '%s:' % reference.name
                 value = self._parse_expression("${%s}" % reference.name)
-                entry = seq.Sequence(entry_name, [reference], value=value)
+                entry = seq.Sequence(entry_name, [reference], value=value, attributes=attrs)
             entry.constraints += constraints
 
         self._children.pop()
@@ -182,7 +182,7 @@ class _Handler(xml.sax.handler.ContentHandler):
             except exp.ExpressionError, ex:
                 raise XmlExpressionError(ex, self._filename, self.locator)
             assert isinstance(not_present, ent.Entry)
-            optional = chc.Choice('optional %s' % entry_name, [not_present, entry])
+            optional = chc.Choice('optional %s' % entry_name, [not_present, entry], attributes=attributes)
             entry = optional
 
             self.lookup[not_present] = (self._filename, lineno, colno)
@@ -276,7 +276,7 @@ class _Handler(xml.sax.handler.ContentHandler):
             return self._references.get_common(name, integer.name)
 
         # We'll create the field, then use it to create the expected value.
-        result = fld.Field(name, length, format, encoding)
+        result = fld.Field(name, length, format, encoding, attributes=attributes)
         if attributes.has_key('value'):
             # Get the correct object type by encoding, then decoding, the text
             # value.
@@ -312,12 +312,12 @@ class _Handler(xml.sax.handler.ContentHandler):
         if attributes.has_key('value'):
             # A sequence can have a value derived from its children...
             value = self._parse_expression(attributes['value'])
-        return seq.Sequence(name, children, value, length)
+        return seq.Sequence(name, children, value, length, attributes=attributes)
 
     def _choice(self, attributes, children, name, length, breaks):
         if len(children) == 0:
             raise self._error("Choice '%s' must have children! Should this be a 'reference' entry?" % attributes['name'])
-        return chc.Choice(name, children, length)
+        return chc.Choice(name, children, length, attributes=attributes)
 
     def _sequenceof(self, attributes, children, name, length, breaks):
         if len(children) == 0:
@@ -329,7 +329,7 @@ class _Handler(xml.sax.handler.ContentHandler):
         count = None
         if attributes.has_key('count'):
             count = self._parse_expression(attributes['count'])
-        result = sof.SequenceOf(name, children[0], count, length, breaks)
+        result = sof.SequenceOf(name, children[0], count, length, breaks, attributes=attributes)
         return result
 
 
