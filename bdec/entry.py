@@ -127,7 +127,7 @@ class Entry(object):
         self.constraints = list(constraints)
         for constraint in self.constraints:
             assert getattr(constraint, 'check') is not None
-        self.attributes = attributes
+        self.attributes = attributes if attributes!=None else {}
 
     def _get_children(self):
         return self._children

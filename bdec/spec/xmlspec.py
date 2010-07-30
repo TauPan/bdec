@@ -182,7 +182,7 @@ class _Handler(xml.sax.handler.ContentHandler):
             except exp.ExpressionError, ex:
                 raise XmlExpressionError(ex, self._filename, self.locator)
             assert isinstance(not_present, ent.Entry)
-            optional = chc.Choice('optional %s' % entry_name, [not_present, entry], attributes=attributes)
+            optional = chc.Choice('optional %s' % entry_name, [not_present, entry], attributes=attrs)
             entry = optional
 
             self.lookup[not_present] = (self._filename, lineno, colno)
