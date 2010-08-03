@@ -32,6 +32,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <syslog.h>
+//#include <libcs_logging.h>
+
 
 #include "${entry.name |filename}.h"
 %for e in iter_optional_common(entry):
@@ -614,7 +618,8 @@ char *ip_to_string(uint32_t *ip) {
   %if get_entry_attribute(entry, "to_string"):
     ${result_string_name} = ${get_entry_attribute(entry, "to_string")}(${data_structure_name});
   %elif entry.format == Field.INTEGER:
-    ${result_string_name} = _calloc_or_exit(21, sizeof(char));
+  // TODO that (char*) seems wrong just like whole assignment :(
+    ${result_string_name} = (char*)_calloc_or_exit(21, sizeof(char));
     snprintf(${result_string_name}, 21, "${settings.printf_format(settings.ctype(entry))}", *${data_structure_name});
     printf("${settings.printf_format(settings.ctype(entry))}\n", *${data_structure_name});
   %elif entry.format == Field.TEXT:
@@ -682,6 +687,7 @@ int ${settings.stringto_name(entry)}(const char *string, ${settings.ctype(entry)
     *result = ${settings.get_entry_attribute(entry, "from_string")}(string);
   %elif entry.format == Field.INTEGER:
     //TODO build testcases for i, long und long long
+    errno = 0;
     %if settings.is_signed_integer(settings.ctype(entry)):
         *result = (${settings.ctype(entry)})strtoll(string, NULL, 10);
     %elif settings.is_unsigned_integer(settings.ctype(entry)):
@@ -689,9 +695,8 @@ int ${settings.stringto_name(entry)}(const char *string, ${settings.ctype(entry)
     %else:
         <% raise Exception('Unknown integer type: neither signed_integer not unsigned_integer') %>
     %endif
-        if (errno == ERANGE) {
-            if (*result == (${settings.ctype(entry)})LLONG_MIN) ||
-                *result == (${settings.ctype(entry)})LLONG_MAX) {
+        if (*result == (${settings.ctype(entry)})ULLONG_MAX || *result == 0) {
+            if (errno == ERANGE || errno == EINVAL) {
                 lcs_log_perror(LOG_ERR, "Error creating ${settings.ctype(entry)} from string '%s':", string);
             }
         }

@@ -141,9 +141,22 @@ void ${settings.print_name(entry)}(${settings.ctype(entry)}* data, unsigned int 
 void ${settings.print_name(entry)}(unsigned int offset, const char* name);
 %endif
 
+<%def name="recursiveMethodsDeclaration(entry)" buffered="True">
+
+  %if contains_data(entry):
 int ${settings.stringto_name(entry)}(const char *string, ${settings.ctype(entry)} *result);
 int ${settings.tostring_name(entry)}(${settings.ctype(entry)} *data, char **result);
+  %endif
 
+  %for child in entry.children:
+    %if child.entry not in common:
+${recursiveMethodsDeclaration(child.entry)}
+    %endif
+  %endfor
+
+</%def>
+
+${recursiveMethodsDeclaration(entry)}
 
 #ifdef __cplusplus
 }
