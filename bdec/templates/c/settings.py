@@ -345,7 +345,7 @@ def print_name(entry):
     return function('print xml ' + escaped_type(entry))
 
 def tostring_name(entry):
-    return function(escaped_type(entry) + 'to string')
+    return function(escaped_type(entry) + ' to string')
 
 def stringto_name(entry):
     return function('string to ' + escaped_type(entry))
