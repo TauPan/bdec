@@ -573,7 +573,7 @@ ${static}void ${settings.print_name(entry)}(unsigned int offset, const char* nam
     %elif isinstance(entry, SequenceOf):
     ${print_whitespace()}
     printf(${'"<%s>\\n"'}, name);
-      %if child_contains_data(entry.children[0]):
+      %if not is_hidden(entry.children[0].name):
         <% iter_name = variable(entry.name + ' counter') %>
     unsigned int ${iter_name};
     for (${iter_name} = 0; ${iter_name} < data->count; ++${iter_name})
@@ -592,82 +592,11 @@ ${static}void ${settings.print_name(entry)}(unsigned int offset, const char* nam
 
 ${recursivePrint(entry, False)}
 
-
-### GENERATE FUNCTIONS FOR FIELD ELEMENTS
-
-##//XXX DELETE ME
-char *ip_to_string(uint32_t *ip) {
-+--  3 lines: char *result = _calloc_or_exit(30, sizeof(char));-----------------
-}
-<%def name="printFieldFunctionBody(entry, data_structure_name, result_string_name)">
-  %if get_entry_attribute(entry, "to_string"):
-+--  1 lines: ${result_string_name} = ${get_entry_attribute(entry, "to_string")}
-  %elif entry.format == Field.INTEGER:
-+--  3 lines: ${result_string_name} = _calloc_or_exit(21, sizeof(char));--------
-  %elif entry.format == Field.TEXT:
-+--  3 lines: ${result_string_name} = _calloc_or_exit((${data_structure_name}->l
-  %elif entry.format == Field.HEX:
-+-- 11 lines: <% iter_name = variable(entry.name + ' counter') %>---------------
-  %elif entry.format == Field.BINARY:
-+-- 16 lines: <% copy_name = variable('copy of ' + entry.name) %>---------------
-  %elif entry.format == Field.FLOAT:
-+--  3 lines: ${result_string_name} = _calloc_or_exit(11, sizeof(char));--------
-  %else:
-    <% raise Exception('Unknown field type %s' % entry) %>
-  %endif
-</%def>
-
-<%def name="recursiveFieldMethods(entry, struct_type)">
-%for child in entry.children:
-+--  2 lines: ${str(child)}-----------------------------------------------------
-  %if child.entry not in common and contains_data(child.entry):
-${recursiveFieldMethods(child.entry, settings.ctype(child.entry))}
-  %endif
-%endfor
-
-%if isinstance(entry, Field) and contains_data(entry):
-## TOSTRING function
-int ${settings.tostring_name(entry)}(${settings.ctype(entry)} *data, char **result) {
-+--  3 lines: int rval = 0;-----------------------------------------------------
-}
-
-## STRINGTO function
-int ${settings.stringto_name(entry)}(const char *string, ${settings.ctype(entry)} *result) {
-  %if settings.get_entry_attribute(entry, "from_string"):
-    *result = ${settings.get_entry_attribute(entry, "from_string")}(string);
-  %elif entry.format == Field.INTEGER:
-+-- 14 lines: TODO build testcases for i, long und long long--------------------
-  %elif entry.format == Field.TEXT:
-+--  4 lines: *result = _calloc_or_exit(sizeof(${settings.ctype(entry)}), 1);---
-  %elif entry.format == Field.HEX:
-    <% pass %>
-  %elif entry.format == Field.BINARY:
-    <% pass %>
-  %elif entry.format == Field.FLOAT:
-    <% pass %>
-  %else:
-    <% raise Exception('Unknown field type %s' % entry) %>
-  %endif
-}
+%if contains_data(entry):
+int ${settings.encode_name(entry)}(${settings.ctype(entry)}* value, struct EncodedData* result)
+%else:
+int ${settings.encode_name(entry)}(struct EncodedData* result)
 %endif
-</%def>
-
-${recursiveFieldMethods(entry, settings.ctype(entry))}
-
-
-<%def name="recursiveSequenceMethods(entry, struct_type)" buffered="True">
-%for child in entry.children:
-##    %if child.entry not in common:
-${recursiveSequenceMethods(child.entry, struct_type)}
-##    %endif
-%endfor
-
-%if isinstance(entry, Sequence) and contains_data(entry):
-int ${settings.tostring_name(entry)}(${settings.ctype(entry)} *data, char **result) {
-+-- 24 lines: int rval;---------------------------------------------------------
+{
+    return 0;
 }
-%endif
-</%def>
-
-${recursiveSequenceMethods(entry, settings.ctype(entry))}
-

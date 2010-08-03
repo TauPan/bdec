@@ -334,6 +334,9 @@ def tostring_name(entry):
 def stringto_name(entry):
     return function('string to ' + escaped_type(entry))
 
+def encode_name(entry):
+    return function('encode ' + escaped_type(entry))
+
 _var_name_cache = {}
 def var_name(entry, child_index):
     try:
