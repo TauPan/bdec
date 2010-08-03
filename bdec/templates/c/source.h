@@ -37,7 +37,7 @@ extern "C" {
 #endif
 
 <%def name="c_define(entry)" >
-  <% packed = " __attribte__ ((packed))" if entry.attributes.has_key("packed") and entry.attributes["packed"]=="true" else "" %>
+  <% packed = " __attribute__((__packed__))" if entry.attributes.has_key("packed") and entry.attributes["packed"]=="true" else "" %>
   %if not contains_data(entry):
 
   %elif isinstance(entry, Sequence) and not settings.is_numeric(settings.ctype(entry)):
