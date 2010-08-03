@@ -600,3 +600,157 @@ int ${settings.encode_name(entry)}(struct EncodedData* result)
 {
     return 0;
 }
+
+
+### GENERATE FUNCTIONS FOR FIELD ELEMENTS
+
+##//XXX DELETE ME
+char *ip_to_string(uint32_t *ip) {
+    char *result = _calloc_or_exit(30, sizeof(char));
+    snprintf(result, 30, "ip: %d", *ip);
+    return result;
+}
+<%def name="printFieldFunctionBody(entry, data_structure_name, result_string_name)">
+  %if get_entry_attribute(entry, "to_string"):
+    ${result_string_name} = ${get_entry_attribute(entry, "to_string")}(${data_structure_name});
+  %elif entry.format == Field.INTEGER:
+    ${result_string_name} = _calloc_or_exit(21, sizeof(char));
+    snprintf(${result_string_name}, 21, "${settings.printf_format(settings.ctype(entry))}", *${data_structure_name});
+    printf("${settings.printf_format(settings.ctype(entry))}\n", *${data_structure_name});
+  %elif entry.format == Field.TEXT:
+    ${result_string_name} = _calloc_or_exit((${data_structure_name}->length)+1, sizeof(char));
+    rval = snprintf(${result_string_name}, (${data_structure_name}->length)+1, "%s", ${data_structure_name}->buffer);
+    rval = rval == (${data_structure_name}->length)+1;
+  %elif entry.format == Field.HEX:
+    <% iter_name = variable(entry.name + ' counter') %>
+    uint64_t ${iter_name};
+    ${result_string_name} = _calloc_or_exit(((${data_structure_name}->length)*2)+3, sizeof(char));
+    snprintf(${result_string_name}, 3, "0x");
+    for(${iter_name}=0; ${iter_name} < ${data_structure_name}->length; ++${iter_name}) {
+        rval = snprintf((${result_string_name} + (${iter_name}*2) + 2), 3, "%02X", ${data_structure_name}->buffer[${iter_name}]);
+        if(rval < 0) {
+            break;
+        }
+    }
+    rval = rval > 0;
+  %elif entry.format == Field.BINARY:
+        <% copy_name = variable('copy of ' + entry.name) %>
+        %if settings.is_numeric(settings.ctype(entry)):
+          <% length = EntryLengthType(entry).range(raw_params).min %>
+    BitBuffer ${copy_name} = {${data_structure_name}, 8 - ${length}, ${length}};
+        %else:
+    BitBuffer ${copy_name} = {${data_structure_name}->buffer, ${data_structure_name}->start_bit, ${data_structure_name}->num_bits};
+        %endif
+    char *string;
+    string = _calloc_or_exit(${data_structure_name}->num_bits + 1, sizeof(char));
+    ${result_string_name} = string;
+    rval = 1;
+    while (${copy_name}.num_bits != 0 && rval > 0)
+    {
+        rval = snprintf(string++, 2, "%u", decode_integer(&${copy_name}, 1));
+    }
+    rval = rval > 0;
+  %elif entry.format == Field.FLOAT:
+    ${result_string_name} = _calloc_or_exit(11, sizeof(char));
+    rval = snprintf(${result_string_name}, 11, "%f", &${data_structure_name});
+    rval = rval > 0;
+  %else:
+    <% raise Exception('Unknown field type %s' % entry) %>
+  %endif
+</%def>
+
+<%def name="recursiveFieldMethods(entry, struct_type)">
+%for child in entry.children:
+    // ${str(child)}
+    // ${contains_data(child.entry)}
+  %if child.entry not in common and contains_data(child.entry):
+${recursiveFieldMethods(child.entry, settings.ctype(child.entry))}
+  %endif
+%endfor
+
+%if isinstance(entry, Field) and contains_data(entry):
+## TOSTRING function
+int ${settings.tostring_name(entry)}(${settings.ctype(entry)} *data, char **result) {
+    int rval = 0;
+    ${printFieldFunctionBody(entry, "data", "*result")}
+    return rval;
+}
+
+## STRINGTO function
+int ${settings.stringto_name(entry)}(const char *string, ${settings.ctype(entry)} *result) {
+  %if settings.get_entry_attribute(entry, "from_string"):
+    *result = ${settings.get_entry_attribute(entry, "from_string")}(string);
+  %elif entry.format == Field.INTEGER:
+    //TODO build testcases for i, long und long long
+    %if settings.is_signed_integer(settings.ctype(entry)):
+        *result = (${settings.ctype(entry)})strtoll(string, NULL, 10);
+    %elif settings.is_unsigned_integer(settings.ctype(entry)):
+        *result = (${settings.ctype(entry)})strtoull(string, NULL, 10);
+    %else:
+        <% raise Exception('Unknown integer type: neither signed_integer not unsigned_integer') %>
+    %endif
+        if (errno == ERANGE) {
+            if (*result == (${settings.ctype(entry)})LLONG_MIN) ||
+                *result == (${settings.ctype(entry)})LLONG_MAX) {
+                lcs_log_perror(LOG_ERR, "Error creating ${settings.ctype(entry)} from string '%s':", string);
+            }
+        }
+  %elif entry.format == Field.TEXT:
+    *result = _calloc_or_exit(sizeof(${settings.ctype(entry)}), 1);
+    result->length = strlen(string);
+    result->buffer = _calloc_or_exit(result->length, sizeof(char));
+    memcpy(result->buffer, string, result->length);
+  %elif entry.format == Field.HEX:
+    <% pass %>
+  %elif entry.format == Field.BINARY:
+    <% pass %>
+  %elif entry.format == Field.FLOAT:
+    <% pass %>
+  %else:
+    <% raise Exception('Unknown field type %s' % entry) %>
+  %endif
+}
+%endif
+</%def>
+
+${recursiveFieldMethods(entry, settings.ctype(entry))}
+
+
+<%def name="recursiveSequenceMethods(entry, struct_type)" buffered="True">
+%for child in entry.children:
+##    %if child.entry not in common:
+${recursiveSequenceMethods(child.entry, struct_type)}
+##    %endif
+%endfor
+
+%if isinstance(entry, Sequence) and contains_data(entry):
+int ${settings.tostring_name(entry)}(${settings.ctype(entry)} *data, char **result) {
+    int rval;
+    size_t length;
+    char *delimiter = " | ";
+    char *char_pntr;
+    char **tmp_string = &char_pntr;
+    char *combined_string = NULL;
+    length = strlen(delimiter)+1;
+    *result = _calloc_or_exit(length, sizeof(char));
+    snprintf(*result, length, "%s", delimiter);
+    %for c in entry.children:
+        %if c.entry not in common and contains_data(entry):
+            %if isinstance(c.entry, Field):
+                <% struct_name = variable(c.entry.name + ' struct') %>
+    ${settings.ctype(c.entry)} *${struct_name} = &(data->${c.entry.name});
+                ${printFieldFunctionBody(c.entry, struct_name, "*tmp_string")}
+    length = strlen(*result)+strlen(*tmp_string)+strlen(delimiter)+1;
+    combined_string = _calloc_or_exit(length, sizeof(char));
+    snprintf(combined_string, length, "%s%s%s", *result, *tmp_string, delimiter);
+    free(*result);
+    *result = combined_string;
+            %endif
+        %endif
+    %endfor
+    return rval;
+}
+%endif
+</%def>
+
+${recursiveSequenceMethods(entry, settings.ctype(entry))}
