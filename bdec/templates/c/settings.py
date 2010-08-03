@@ -328,6 +328,12 @@ def decode_name(entry):
 def print_name(entry):
     return function('print xml ' + escaped_type(entry))
 
+def tostring_name(entry):
+    return function(escaped_type(entry) + 'to string')
+
+def stringto_name(entry):
+    return function('string to ' + escaped_type(entry))
+
 _var_name_cache = {}
 def var_name(entry, child_index):
     try:
@@ -349,4 +355,13 @@ def _c_repr(char):
 def c_string(data):
     """Return a correctly quoted c-style string for an arbitrary binary string."""
     return '"%s"' % ''.join(_c_repr(char) for char in data)
+
+def get_entry_attributes(entry):
+    return entry.attributes
+
+def get_entry_attribute(entry, key):
+    attr = None
+    if entry.attributes and entry.attributes.has_key(key):
+        attr = entry.attributes[key]
+    return attr
 

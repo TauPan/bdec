@@ -129,6 +129,10 @@ void ${settings.print_name(entry)}(${settings.ctype(entry)}* data, unsigned int 
 void ${settings.print_name(entry)}(unsigned int offset, const char* name);
 %endif
 
+int ${settings.stringto_name(entry)}(const char *string, ${settings.ctype(entry)} *result);
+int ${settings.tostring_name(entry)}(${settings.ctype(entry)} *data, char **result);
+
+
 #ifdef __cplusplus
 }
 #endif
