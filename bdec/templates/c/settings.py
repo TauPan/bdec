@@ -42,6 +42,22 @@ def is_numeric(type):
         return True
     return type in signed_types or type in unsigned_types
 
+def is_signed_integer(type):
+    return type in signed_types
+
+def is_unsigned_integer(type):
+    return type in unsigned_types
+
+def get_entry_attributes(entry):
+    return entry.attributes
+
+def get_entry_attribute(entry, key):
+    attr = None
+    if entry.attributes and entry.attributes.has_key(key):
+        attr = entry.attributes[key]
+    return attr
+
+
 def printf_format(type):
     a = unsigned_types.copy()
     a.update(signed_types)
@@ -358,13 +374,4 @@ def _c_repr(char):
 def c_string(data):
     """Return a correctly quoted c-style string for an arbitrary binary string."""
     return '"%s"' % ''.join(_c_repr(char) for char in data)
-
-def get_entry_attributes(entry):
-    return entry.attributes
-
-def get_entry_attribute(entry, key):
-    attr = None
-    if entry.attributes and entry.attributes.has_key(key):
-        attr = entry.attributes[key]
-    return attr
 
