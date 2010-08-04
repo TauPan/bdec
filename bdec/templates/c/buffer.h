@@ -19,6 +19,9 @@
 #ifndef BIT_BUFFER_HEADER_FILE
 #define BIT_BUFFER_HEADER_FILE
 
+#include <string.h>
+
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -75,6 +78,18 @@ double decodeFloat(BitBuffer* data, enum Encoding encoding);
  */
 double decodeDouble(BitBuffer* data, enum Encoding encoding);
 
+/* FIXME use libcs_util here! */
+void *_calloc_or_exit(size_t nmemb, size_t size);
+
+/* FIXME use libcs_util here! */
+void *_realloc_or_exit(void* ptr, size_t size);
+
+/* FIXME use libcs_util here! */
+int _check_buffer_or_print_error(void *buffer);
+
+/* FIXME use libcs_util here! */
+void *_print_malloc_error();
+    
 #ifdef __cplusplus
 }
 #endif

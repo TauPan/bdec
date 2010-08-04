@@ -31,9 +31,11 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <errno.h>
 #include <syslog.h>
+#include <limits.h>
 //#include <libcs_logging.h>
 
 
@@ -618,8 +620,7 @@ char *ip_to_string(uint32_t *ip) {
   %if get_entry_attribute(entry, "to_string"):
     ${result_string_name} = ${get_entry_attribute(entry, "to_string")}(${data_structure_name});
   %elif entry.format == Field.INTEGER:
-  // TODO that (char*) seems wrong just like whole assignment :(
-    ${result_string_name} = (char*)_calloc_or_exit(21, sizeof(char));
+    ${result_string_name} = _calloc_or_exit(21, sizeof(char));
     snprintf(${result_string_name}, 21, "${settings.printf_format(settings.ctype(entry))}", *${data_structure_name});
     printf("${settings.printf_format(settings.ctype(entry))}\n", *${data_structure_name});
   %elif entry.format == Field.TEXT:
@@ -666,8 +667,8 @@ char *ip_to_string(uint32_t *ip) {
 
 <%def name="recursiveFieldMethods(entry, struct_type)">
 %for child in entry.children:
-    // ${str(child)}
-    // ${contains_data(child.entry)}
+##    // ${str(child)}
+##    // ${contains_data(child.entry)}
   %if child.entry not in common and contains_data(child.entry):
 ${recursiveFieldMethods(child.entry, settings.ctype(child.entry))}
   %endif
@@ -682,29 +683,29 @@ int ${settings.tostring_name(entry)}(${settings.ctype(entry)} *data, char **resu
 }
 
 ## STRINGTO function
-int ${settings.stringto_name(entry)}(const char *string, ${settings.ctype(entry)} *result) {
+int ${settings.stringto_name(entry)}(const char *string, ${settings.ctype(entry)} **result) {
+    *result = (${settings.ctype(entry)}*)_calloc_or_exit(1, sizeof(${settings.ctype(entry)}));
   %if settings.get_entry_attribute(entry, "from_string"):
-    *result = ${settings.get_entry_attribute(entry, "from_string")}(string);
+    **result = ${settings.get_entry_attribute(entry, "from_string")}(string);
   %elif entry.format == Field.INTEGER:
     //TODO build testcases for i, long und long long
     errno = 0;
     %if settings.is_signed_integer(settings.ctype(entry)):
-        *result = (${settings.ctype(entry)})strtoll(string, NULL, 10);
+        **result = (${settings.ctype(entry)})strtoll(string, NULL, 10);
     %elif settings.is_unsigned_integer(settings.ctype(entry)):
-        *result = (${settings.ctype(entry)})strtoull(string, NULL, 10);
+        **result = (${settings.ctype(entry)})strtoull(string, NULL, 10);
     %else:
         <% raise Exception('Unknown integer type: neither signed_integer not unsigned_integer') %>
     %endif
-        if (*result == (${settings.ctype(entry)})ULLONG_MAX || *result == 0) {
+        if (**result == (${settings.ctype(entry)})ULLONG_MAX || **result == 0) {
             if (errno == ERANGE || errno == EINVAL) {
                 lcs_log_perror(LOG_ERR, "Error creating ${settings.ctype(entry)} from string '%s':", string);
             }
         }
   %elif entry.format == Field.TEXT:
-    *result = _calloc_or_exit(sizeof(${settings.ctype(entry)}), 1);
-    result->length = strlen(string);
-    result->buffer = _calloc_or_exit(result->length, sizeof(char));
-    memcpy(result->buffer, string, result->length);
+    (*result)->length = strlen(string);
+    (*result)->buffer = _calloc_or_exit((*result)->length, sizeof(char));
+    memcpy((*result)->buffer, string, (*result)->length);
   %elif entry.format == Field.HEX:
     <% pass %>
   %elif entry.format == Field.BINARY:
@@ -758,4 +759,4 @@ int ${settings.tostring_name(entry)}(${settings.ctype(entry)} *data, char **resu
 %endif
 </%def>
 
-${recursiveSequenceMethods(entry, settings.ctype(entry))}
+##${recursiveSequenceMethods(entry, settings.ctype(entry))}

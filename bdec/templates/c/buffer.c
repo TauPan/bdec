@@ -18,19 +18,20 @@
     <http://www.gnu.org/licenses/>. */
 
 #include <assert.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 #include "buffer.h"
 #include "variable_integer.h"
 
-union FloatConversion
-{
+
+union FloatConversion {
     unsigned char buffer[8];
     float floatValue;
     double doubleValue;
 };
 
-enum Encoding getMachineEncoding()
-{
+enum Encoding getMachineEncoding() {
     union {
         long int l;
         unsigned char c[sizeof (long int)];
@@ -41,40 +42,73 @@ enum Encoding getMachineEncoding()
     return u.c[0] == 1 ? BDEC_LITTLE_ENDIAN : BDEC_BIG_ENDIAN;
 }
 
-static void convertEndian(enum Encoding encoding, unsigned char output[], BitBuffer* data)
-{
+static void convertEndian(enum Encoding encoding, unsigned char output[], BitBuffer* data) {
     int numBytes = data->num_bits / 8;
-    if (encoding == getMachineEncoding())
-    {
+    if (encoding == getMachineEncoding()) {
         int i;
-        for (i = 0; i < numBytes; ++i)
-        {
+        for (i = 0; i < numBytes; ++i) {
             output[i] = decode_integer(data, 8);
         }
-    }
-    else
-    {
+    } else {
         int i;
-        for (i = 0; i < numBytes; ++i)
-        {
+        for (i = 0; i < numBytes; ++i) {
             output[numBytes - 1 - i] = decode_integer(data, 8);
         }
     }
 }
 
-double decodeFloat(BitBuffer* data, enum Encoding encoding)
-{
+double decodeFloat(BitBuffer* data, enum Encoding encoding) {
     assert(data->num_bits == 32);
     union FloatConversion conv;
     convertEndian(encoding, conv.buffer, data);
     return conv.floatValue;
 }
 
-double decodeDouble(BitBuffer* data, enum Encoding encoding)
-{
+double decodeDouble(BitBuffer* data, enum Encoding encoding) {
     assert(data->num_bits == 64);
     union FloatConversion conv;
     convertEndian(encoding, conv.buffer, data);
     return conv.doubleValue;
 }
+
+/* FIXME use libcs_util here! */
+void *_calloc_or_exit(size_t nmemb, size_t size) {
+    void *tmp = calloc(nmemb, size);
+    if (_check_buffer_or_print_error(tmp)) {
+        return tmp;
+    } else {
+        fprintf(stderr, "fatal error, terminating program");
+        exit(-1);
+    }
+}
+
+
+/* FIXME use libcs_util here! */
+void *_realloc_or_exit(void* ptr, size_t size) {
+    void *tmp = realloc(ptr, size);
+    if (_check_buffer_or_print_error(tmp)) {
+        return tmp;
+    } else {
+        fprintf(stderr, "fatal error, terminating program");
+        exit(-1);
+    }
+} 
+
+/* FIXME use libcs_util here! */
+int _check_buffer_or_print_error(void *buffer) {
+    if (!buffer) {
+        _print_malloc_error();
+        return 0;
+    } else {
+        return 1;
+    }
+} 
+  
+  
+/* FIXME use libcs_util here! */
+void *_print_malloc_error() {
+    fprintf(stderr, "critical error: Failure allocating memory!");
+    return NULL;
+} 
+    
 

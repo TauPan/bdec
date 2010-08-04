@@ -144,7 +144,7 @@ void ${settings.print_name(entry)}(unsigned int offset, const char* name);
 <%def name="recursiveMethodsDeclaration(entry)" buffered="True">
 
   %if contains_data(entry):
-int ${settings.stringto_name(entry)}(const char *string, ${settings.ctype(entry)} *result);
+int ${settings.stringto_name(entry)}(const char *string, ${settings.ctype(entry)} **result);
 int ${settings.tostring_name(entry)}(${settings.ctype(entry)} *data, char **result);
   %endif
 
