@@ -126,3 +126,40 @@ void print_escaped_string(Text* text)
     }
 }
 
+void encode_big_endian_integer(unsigned int value, int num_bits, struct EncodedData* result)
+{
+    ensureEncodeSpace(result, num_bits);
+    char* buffer = &result->buffer[result->num_bits / 8];
+    int shiftDistance = num_bits - (8 - result->num_bits % 8);
+    int isFirstByteOverlapping = (result->num_bits % 8 != 0);
+    if (shiftDistance >= 0)
+    {
+        if (isFirstByteOverlapping)
+        {
+            isFirstByteOverlapping = 0;
+            // We need to OR the first byte (to fill the first byte)
+            *(buffer++) |= (value >> shiftDistance) & 0xFF;
+            shiftDistance -= 8;
+        }
+        // We can now proceed to write whole bytes to the output
+        while (shiftDistance >= 0)
+        {
+            *(buffer++) = (value >> shiftDistance) & 0xFF;
+            shiftDistance -= 8;
+        }
+    }
+    // If we still have data left, it needs to be shifted to the left
+    if (shiftDistance > -8)
+    {
+        if (!isFirstByteOverlapping)
+        {
+            *(buffer++) = (value << (-shiftDistance)) & 0xFF;
+        }
+        else
+        {
+            *(buffer++) |= (value << (-shiftDistance)) & 0xFF;
+        }
+    }
+    result->num_bits += num_bits;
+}
+

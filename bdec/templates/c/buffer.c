@@ -71,6 +71,62 @@ double decodeDouble(BitBuffer* data, enum Encoding encoding) {
     return conv.doubleValue;
 }
 
+void ensureEncodeSpace(struct EncodedData* buffer, int numBits)
+{
+    int numBitsRequired = numBits + buffer->num_bits;
+    if (numBitsRequired > buffer->allocated_length_bytes * 8)
+    {
+        // We need to allocate more room for this data. This logic is an
+        // attempt to avoid too many large allocations, while at the same
+        // time avoiding a excessive amount of reallocations. It isn't based
+        // on measurements, just on purely subjective guesses.
+        //
+        // FIXME: Profile the allocation sizes for a series of protocols to
+        // improve the re-allocation logic... if we're allocating a lot of
+        // small buffers using a built-in buffer in the EncodedBuffer instance
+        // may be a good idea. Another option may be chaining multiple
+        // allocation buffers using some sort of reference counting scheme.
+        // Note that we don't need random access into the allocated buffer...
+        int numBytesRequired = numBitsRequired / 8 + 1;
+        if (numBytesRequired > 100000)
+        {
+            numBytesRequired += 100000;
+        }
+        else if (numBytesRequired < 16)
+        {
+            numBytesRequired = 16;
+        }
+        else
+        {
+            numBytesRequired *= 2;
+        }
+        buffer->buffer = realloc(buffer->buffer, numBytesRequired);
+        buffer->allocated_length_bytes = numBytesRequired;
+    }
+}
+
+void appendBuffer(struct EncodedData* result, BitBuffer* data)
+{
+    BitBuffer copy = *data;
+    while (copy.num_bits >= sizeof(unsigned int) * 8)
+    {
+        encode_big_endian_integer(decode_integer(&copy, sizeof(unsigned int) * 8),
+                sizeof(unsigned int) * 8, result);
+    }
+    if (copy.num_bits > 0)
+    {
+        encode_big_endian_integer(decode_integer(&copy, copy.num_bits),
+                copy.num_bits, result);
+    }
+}
+
+void appendText(struct EncodedData* result, Text* value)
+{
+    BitBuffer copy = {(unsigned char*)value->buffer, 0, value->length * 8};
+    appendBuffer(result, &copy);
+}
+
+
 /* FIXME use libcs_util here! */
 void *_calloc_or_exit(size_t nmemb, size_t size) {
     void *tmp = calloc(nmemb, size);
@@ -111,4 +167,3 @@ void *_print_malloc_error() {
     return NULL;
 } 
     
-

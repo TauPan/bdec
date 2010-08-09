@@ -598,14 +598,112 @@ ${static}void ${settings.print_name(entry)}(unsigned int offset, const char* nam
 
 ${recursivePrint(entry, False)}
 
+<%def name="encodeField(entry)" buffered="True">
+    <% value = settings.get_expected(entry) %>
+    <% value_name = '*value' if value is None else 'value' %>
+    %if value is not None:
+    ${settings.ctype(entry)} value = ${value};
+    %endif
+    %if entry.format == Field.INTEGER:
+      %if entry.encoding == Field.BIG_ENDIAN:
+    encode_big_endian_integer(${value_name}, ${settings.value(entry, entry.length)}, result);
+      %else:
+    encode_little_endian_integer(${value_name}, ${settings.value(entry, entry.length)}, result);
+      %endif
+    %elif entry.format == Field.BINARY:
+      %if settings.is_numeric(settings.ctype(entry)):
+        <% length = EntryLengthType(entry).range(raw_params).min %>
+    BitBuffer copy = {&${value_name}, 8 - ${length}, ${length}};
+      %else:
+    BitBuffer copy = ${value_name};
+      %endif
+
+    appendBuffer(result, &copy);
+    %elif entry.format == Field.TEXT:
+    appendText(result, value);
+    %else:
+      <% raise Exception("Don't know how to encode field %s!" % entry) %>
+    %endif
+</%def>
+
+<%def name="encodeSequence(entry)" buffered="True">
+    %for i, child in enumerate(entry.children):
+      %if child_contains_data(child):
+    if (!${settings.encode_name(child.entry)}(&value->${settings.var_name(entry, i)}, result))
+      %else:
+    if (!${settings.encode_name(child.entry)}(result))
+      %endif
+    {
+        return 0;
+    }
+    %endfor
+</%def>
+
+<%def name="encodeChoice(entry)" buffered="True">
+    <% option = 'value->option' if settings.children_contain_data(entry) else '*value' %>
+    switch (${option})
+    {
+      %for i, child in enumerate(entry.children):
+    case ${enum_value(entry, i)}:
+        %if child_contains_data(child):
+        return ${settings.encode_name(child.entry)}(&value->value.${settings.var_name(entry, i)}, result);
+        %else:
+        return ${settings.encode_name(child.entry)}(result);
+        %endif
+      %endfor
+    default:
+      return 0;
+    }
+</%def>
+
+<%def name="encodeSequenceof(entry)" buffered="True">
+    int i;
+    for (i = 0; i < value->count; ++i)
+    {
+      %if child_contains_data(entry.children[0]):
+        if (!${settings.encode_name(entry.children[0].entry)}(&value->items[i], result))
+      %else:
+        if (!${settings.encode_name(entry.children[0].entry)}(result))
+      %endif
+        {
+            return 0;
+        }
+    }
+</%def>
+
+<%def name="recursiveEncode(entry, is_static)" buffered="True">
+%for child in entry.children:
+  %if child.entry not in common:
+${recursiveEncode(child.entry, True)}
+  %endif
+%endfor
+
+<% static = "static " if is_static else "" %>
 %if contains_data(entry):
-int ${settings.encode_name(entry)}(${settings.ctype(entry)}* value, struct EncodedData* result)
+${static} int ${settings.encode_name(entry)}(${settings.ctype(entry)}* value, struct EncodedData* result)
 %else:
-int ${settings.encode_name(entry)}(struct EncodedData* result)
+${static} int ${settings.encode_name(entry)}(struct EncodedData* result)
 %endif
 {
-    return 0;
+  %if isinstance(entry, Field):
+    ${encodeField(entry)}
+  %elif isinstance(entry, Sequence):
+    ${encodeSequence(entry)}
+  %elif isinstance(entry, Choice):
+    ${encodeChoice(entry)}
+  %elif isinstance(entry, SequenceOf):
+    ${encodeSequenceof(entry)}
+  %else:
+    <% raise Exception("Don't know how to encode entry %s!" % entry) %>
+  %endif
+    return 1;
 }
+
+</%def>
+
+%if generate_encoder:
+${recursiveEncode(entry, False)}
+%endif
 
 
 ### GENERATE FUNCTIONS FOR FIELD ELEMENTS
