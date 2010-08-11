@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+//#include <libcs_logging.h>
+
 #include "spec.h"
 
 BitBuffer* createBitBufferFromFilename(char* filename);
@@ -45,43 +47,128 @@ void test_packed_statement() {
 }
 
 void test_to_string() {
-    char **resultString = malloc(sizeof(char**));
+    char **resultString = malloc(sizeof(char*));
+    char *expected;
     char *filename = "spec.input";
+    printf("\ncreating BitBuffer from filename...\n");
     BitBuffer* buffer = createBitBufferFromFilename(filename);
-    struct Spec* spec;
+    struct Spec* spec = calloc(1, sizeof(struct Spec));
+    printf("decoding spec...\n");
     decodeSpec(buffer, spec);
     free(buffer);
 
+    printf("now starting the tests...\n");
+
+    expected = "97";
+    uint8ToString(&spec->to_string_sequence.uint8, resultString);
+    printf("called uint8ToString()...\n");
+    CU_ASSERT_STRING_EQUAL_FATAL(*resultString, expected);
+    free(*resultString);
+
+    expected = "25187";
+    uint16ToString(&spec->to_string_sequence.uint16, resultString);
+    printf("called uint16ToString()...\n");
+    CU_ASSERT_STRING_EQUAL_FATAL(*resultString, expected);
+    free(*resultString);
+   
+    expected = "1684366951";
+    uint32ToString(&spec->to_string_sequence.uint32, resultString);
+    printf("called uint32ToString()...\n");
+    CU_ASSERT_STRING_EQUAL_FATAL(*resultString, expected);
+    free(*resultString);
+    
+    expected = "7523661662112280432";
+    uint64ToString(&spec->to_string_sequence.uint64, resultString);
+    printf("called int64ToString()...\n");
+    CU_ASSERT_STRING_EQUAL_FATAL(*resultString, expected);
+    free(*resultString);
+    
+    expected = "1";
+    uint2ToString(&spec->to_string_sequence.uint2, resultString);
+    printf("called uint2ToString()...\n");
+    CU_ASSERT_STRING_EQUAL_FATAL(*resultString, expected);
+    free(*resultString);
+
+    expected = "54";
+    uint6ToString(&spec->to_string_sequence.uint6, resultString);
+    printf("called uint6ToString()...\n");
+    CU_ASSERT_STRING_EQUAL_FATAL(*resultString, expected);
+    free(*resultString);
+    
+    expected = "97";
     int8ToString(&spec->to_string_sequence.int8, resultString);
-    CU_ASSERT_FATAL(*resultString == "");
+    printf("called uint8ToString()...\n");
+    CU_ASSERT_STRING_EQUAL_FATAL(*resultString, expected);
+    free(*resultString);
+
+    expected = "25187";
     int16ToString(&spec->to_string_sequence.int16, resultString);
-    CU_ASSERT_FATAL(*resultString == "");
+    printf("called uint16ToString()...\n");
+    CU_ASSERT_STRING_EQUAL_FATAL(*resultString, expected);
+    free(*resultString);
+   
+    expected = "1684366951";
     int32ToString(&spec->to_string_sequence.int32, resultString);
-    CU_ASSERT_FATAL(*resultString == "");
+    printf("called uint32ToString()...\n");
+    CU_ASSERT_STRING_EQUAL_FATAL(*resultString, expected);
+    free(*resultString);
+    
+    expected = "7523661662112280432";
     int64ToString(&spec->to_string_sequence.int64, resultString);
-    CU_ASSERT_FATAL(*resultString == "");
+    printf("called int64ToString()...\n");
+    CU_ASSERT_STRING_EQUAL_FATAL(*resultString, expected);
+    free(*resultString);
+    
+    expected = "1";
     int2ToString(&spec->to_string_sequence.int2, resultString);
-    CU_ASSERT_FATAL(*resultString == "");
+    printf("called uint2ToString()...\n");
+    CU_ASSERT_STRING_EQUAL_FATAL(*resultString, expected);
+    free(*resultString);
+
+    expected = "54";
     int6ToString(&spec->to_string_sequence.int6, resultString);
-    CU_ASSERT_FATAL(*resultString == "");
+    printf("called uint6ToString()...\n");
+    CU_ASSERT_STRING_EQUAL_FATAL(*resultString, expected);
+    free(*resultString);
+   
+    expected = "0x7778797a61626364";
     hex64ToString(&spec->to_string_sequence.hex64, resultString);
-    CU_ASSERT_FATAL(*resultString == "");
+    CU_ASSERT_STRING_EQUAL_FATAL(*resultString, expected);
+    free(*resultString);
+    
+    expected = "65";
     hex8ToString(&spec->to_string_sequence.hex8, resultString);
-    CU_ASSERT_FATAL(*resultString == "");
+    CU_ASSERT_STRING_EQUAL_FATAL(*resultString, expected);
+    free(*resultString);
+    
     bin13ToString(&spec->to_string_sequence.bin13, resultString);
-    CU_ASSERT_FATAL(*resultString == "");
+    CU_ASSERT_STRING_EQUAL_FATAL(*resultString, expected);
+    free(*resultString);
+    
     bin19ToString(&spec->to_string_sequence.bin19, resultString);
-    CU_ASSERT_FATAL(*resultString == "");
+    CU_ASSERT_STRING_EQUAL_FATAL(*resultString, expected);
+    free(*resultString);
+    
     bin32ToString(&spec->to_string_sequence.bin32, resultString);
-    CU_ASSERT_FATAL(*resultString == "");
+    CU_ASSERT_STRING_EQUAL_FATAL(*resultString, expected);
+    free(*resultString);
+    
     text32ToString(&spec->to_string_sequence.text32, resultString);
-    CU_ASSERT_FATAL(*resultString == "");
+    CU_ASSERT_STRING_EQUAL_FATAL(*resultString, expected);
+    free(*resultString);
+    
     text15ToString(&spec->to_string_sequence.text15, resultString);
-    CU_ASSERT_FATAL(*resultString == "");
+    CU_ASSERT_STRING_EQUAL_FATAL(*resultString, expected);
+    free(*resultString);
+    
     text17ToString(&spec->to_string_sequence.text17, resultString);
-    CU_ASSERT_FATAL(*resultString == "");
+    CU_ASSERT_STRING_EQUAL_FATAL(*resultString, expected);
+    free(*resultString);
+
+    printf("\nfinished the tests...\n");
 
     freeSpec(spec);
+    printf("freed spec...\n");
 }
 
 BitBuffer* createBitBufferFromFilename(char* filename) {
