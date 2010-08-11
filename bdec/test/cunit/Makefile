@@ -9,6 +9,7 @@ all:
     export LD_LIBRARY_PATH=/usr/local/lib/;\
     cd ${OUTPUT};\
     rm main.c;\
-    gcc *.c -o cunit_tests -lcunit -lcs_logging -ggdb -O0;\
+    rm cunit_tests;\
+    gcc *.c -o cunit_tests -lcunit -lcs_logging -ggdb -O0 -Wall -Werror;\
     echo "\n\n|=========================== now starting the test ============================|\n\n";\
     ./cunit_tests)
