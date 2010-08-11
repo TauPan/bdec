@@ -36,7 +36,7 @@
 #include <errno.h>
 #include <syslog.h>
 #include <limits.h>
-//#include <libcs_logging.h>
+#include <libcs_logging.h>
 
 
 #include "${entry.name |filename}.h"
@@ -709,18 +709,20 @@ ${recursiveEncode(entry, False)}
 ### GENERATE FUNCTIONS FOR FIELD ELEMENTS
 
 ##//XXX DELETE ME
-char *ip_to_string(uint32_t *ip) {
-    char *result = _calloc_or_exit(30, sizeof(char));
-    snprintf(result, 30, "ip: %d", *ip);
-    return result;
-}
+/*
+*char *ip_to_string(uint32_t *ip) {
+*    char *result = _calloc_or_exit(30, sizeof(char));
+*    snprintf(result, 30, "ip: %d", *ip);
+*    return result;
+*}
+*/
 <%def name="printFieldFunctionBody(entry, data_structure_name, result_string_name)">
   %if get_entry_attribute(entry, "to_string"):
     ${result_string_name} = ${get_entry_attribute(entry, "to_string")}(${data_structure_name});
   %elif entry.format == Field.INTEGER:
     ${result_string_name} = _calloc_or_exit(21, sizeof(char));
     snprintf(${result_string_name}, 21, "${settings.printf_format(settings.ctype(entry))}", *${data_structure_name});
-    printf("${settings.printf_format(settings.ctype(entry))}\n", *${data_structure_name});
+    printf("${data_structure_name}: ${settings.printf_format(settings.ctype(entry))}\n", *${data_structure_name});
   %elif entry.format == Field.TEXT:
     ${result_string_name} = _calloc_or_exit((${data_structure_name}->length)+1, sizeof(char));
     rval = snprintf(${result_string_name}, (${data_structure_name}->length)+1, "%s", ${data_structure_name}->buffer);
@@ -782,6 +784,7 @@ int ${settings.tostring_name(entry)}(${settings.ctype(entry)} *data, char **resu
 
 ## STRINGTO function
 int ${settings.stringto_name(entry)}(const char *string, ${settings.ctype(entry)} **result) {
+    int rval = 0;
     *result = (${settings.ctype(entry)}*)_calloc_or_exit(1, sizeof(${settings.ctype(entry)}));
   %if settings.get_entry_attribute(entry, "from_string"):
     **result = ${settings.get_entry_attribute(entry, "from_string")}(string);
@@ -813,6 +816,7 @@ int ${settings.stringto_name(entry)}(const char *string, ${settings.ctype(entry)
   %else:
     <% raise Exception('Unknown field type %s' % entry) %>
   %endif
+  return rval;
 }
 %endif
 </%def>
