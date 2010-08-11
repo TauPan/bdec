@@ -105,7 +105,7 @@ void ensureEncodeSpace(struct EncodedData* buffer, int numBits)
     }
 }
 
-void appendBuffer(struct EncodedData* result, BitBuffer* data)
+void appendBitBuffer(struct EncodedData* result, BitBuffer* data)
 {
     BitBuffer copy = *data;
     while (copy.num_bits >= sizeof(unsigned int) * 8)
@@ -123,7 +123,13 @@ void appendBuffer(struct EncodedData* result, BitBuffer* data)
 void appendText(struct EncodedData* result, Text* value)
 {
     BitBuffer copy = {(unsigned char*)value->buffer, 0, value->length * 8};
-    appendBuffer(result, &copy);
+    appendBitBuffer(result, &copy);
+}
+
+void appendBuffer(struct EncodedData* result, Buffer* value)
+{
+    BitBuffer copy = {value->buffer, 0, value->length * 8};
+    appendBitBuffer(result, &copy);
 }
 
 
