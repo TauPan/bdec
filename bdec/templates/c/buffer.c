@@ -57,6 +57,25 @@ static void convertEndian(enum Encoding encoding, unsigned char output[], BitBuf
     }
 }
 
+static void appendFloatBuffer(unsigned char source[], int numBytes, enum Encoding encoding, struct EncodedData* output) {
+    if (encoding == getMachineEncoding())
+    {
+        int i;
+        for (i = 0; i < numBytes; ++i)
+        {
+            encode_big_endian_integer(source[i], 8, output);
+        }
+    }
+    else
+    {
+        int i;
+        for (i = 0; i < numBytes; ++i)
+        {
+            encode_big_endian_integer(source[numBytes - 1 - i], 8, output);
+        }
+    }
+}
+
 double decodeFloat(BitBuffer* data, enum Encoding encoding) {
     assert(data->num_bits == 32);
     union FloatConversion conv;
@@ -71,8 +90,19 @@ double decodeDouble(BitBuffer* data, enum Encoding encoding) {
     return conv.doubleValue;
 }
 
-void ensureEncodeSpace(struct EncodedData* buffer, int numBits)
-{
+void appendFloat(float value, enum Encoding encoding, struct EncodedData* output) {
+    union FloatConversion conv;
+    conv.floatValue = value;
+    appendFloatBuffer(conv.buffer, 4, encoding, output);
+}
+
+void appendDouble(double value, enum Encoding encoding, struct EncodedData* output) {
+    union FloatConversion conv;
+    conv.doubleValue = value;
+    appendFloatBuffer(conv.buffer, 8, encoding, output);
+}
+
+void ensureEncodeSpace(struct EncodedData* buffer, int numBits) {
     int numBitsRequired = numBits + buffer->num_bits;
     if (numBitsRequired > buffer->allocated_length_bytes * 8)
     {
@@ -105,8 +135,7 @@ void ensureEncodeSpace(struct EncodedData* buffer, int numBits)
     }
 }
 
-void appendBitBuffer(struct EncodedData* result, BitBuffer* data)
-{
+void appendBitBuffer(struct EncodedData* result, BitBuffer* data) {
     BitBuffer copy = *data;
     while (copy.num_bits >= sizeof(unsigned int) * 8)
     {
@@ -120,16 +149,20 @@ void appendBitBuffer(struct EncodedData* result, BitBuffer* data)
     }
 }
 
-void appendText(struct EncodedData* result, Text* value)
-{
+void appendText(struct EncodedData* result, Text* value) {
     BitBuffer copy = {(unsigned char*)value->buffer, 0, value->length * 8};
     appendBitBuffer(result, &copy);
 }
 
-void appendBuffer(struct EncodedData* result, Buffer* value)
-{
+void appendBuffer(struct EncodedData* result, Buffer* value) {
     BitBuffer copy = {value->buffer, 0, value->length * 8};
     appendBitBuffer(result, &copy);
+}
+
+void appendEncodedBuffer(struct EncodedData* result, struct EncodedData* value)
+{
+    BitBuffer temp = {(unsigned char*)value->buffer, 0, value->num_bits};
+    appendBitBuffer(result, &temp);
 }
 
 
@@ -173,3 +206,4 @@ void *_print_malloc_error() {
     return NULL;
 } 
     
+

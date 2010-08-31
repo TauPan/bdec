@@ -71,6 +71,7 @@ void ensureEncodeSpace(struct EncodedData* buffer, int numBits);
 void appendBitBuffer(struct EncodedData* result, BitBuffer* data);
 void appendText(struct EncodedData* result, Text* value);
 void appendBuffer(struct EncodedData* result, Buffer* value);
+void appendEncodedBuffer(struct EncodedData* result, struct EncodedData* value);
 
 /**
  * Decode a data buffer to a float.
@@ -79,6 +80,7 @@ void appendBuffer(struct EncodedData* result, Buffer* value);
  *   or the code will assert.
  */
 double decodeFloat(BitBuffer* data, enum Encoding encoding);
+void appendFloat(float value, enum Encoding encoding, struct EncodedData* output);
 
 /**
  * Decode a data buffer to a float.
@@ -87,6 +89,7 @@ double decodeFloat(BitBuffer* data, enum Encoding encoding);
  *   or the code will assert.
  */
 double decodeDouble(BitBuffer* data, enum Encoding encoding);
+void appendDouble(double value, enum Encoding encoding, struct EncodedData* output);
 
 /* FIXME use libcs_util here! */
 void *_calloc_or_exit(size_t nmemb, size_t size);

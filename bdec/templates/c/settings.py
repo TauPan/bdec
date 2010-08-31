@@ -21,9 +21,11 @@ import string
 
 import bdec.choice as chc
 from bdec.constraints import Equals
+from bdec.data import Data
 from bdec.entry import Entry
 import bdec.field as fld
 import bdec.sequence as seq
+from bdec.sequenceof import SequenceOf
 from bdec.expression import ArithmeticExpression, ReferenceExpression, Constant
 from bdec.inspect.param import Local, Param, MAGIC_UNKNOWN_NAME
 from bdec.inspect.type import EntryLengthType, EntryValueType, IntegerType, EntryType, expression_range
@@ -176,16 +178,22 @@ def ctype(variable):
     else:
         raise Exception("Unknown parameter type '%s'!" % variable)
 
-def define_params(entry):
+def _get_param_string(params):
     result = ""
-    for param in get_params(entry):
+    for param in params:
         if param.direction is param.IN:
             result += ", %s %s" % (ctype(param.type), param.name)
         else:
             result += ", %s* %s" % (ctype(param.type), param.name)
     return result
 
-def option_output_temporaries(entry, child_index):
+def define_params(entry):
+    return _get_param_string(get_params(entry))
+
+def encode_params(entry):
+    return _get_param_string(encode_params.get_params(entry))
+
+def option_output_temporaries(entry, child_index, params):
     """Return a dictionary of {name : temp_name}.
 
     This maps the option entries name to a local's name. This is done because
@@ -201,23 +209,23 @@ def option_output_temporaries(entry, child_index):
     # them to the 'real' output at the end.
     assert isinstance(entry, chc.Choice)
     result = {}
-    params = [param.name for param in get_params(entry)]
-    params.extend(local.name for local in local_vars(entry))
+    param_names = [param.name for param in params.get_params(entry)]
+    param_names.extend(local.name for local in params.get_locals(entry))
 
-    for param in get_passed_variables(entry, entry.children[child_index]):
-        if param.direction == param.OUT and param.name in params:
+    for param in params.get_passed_variables(entry, entry.children[child_index]):
+        if param.direction == param.OUT and param.name in param_names:
             # We found a parameter that is output from the entry; to
             # avoid the possibility that this is a different type to
             # the parent output, we stash it in a temporary location.
             result[param.name] = '%s%i' % (param.name, child_index)
     return result
 
-def local_variables(entry):
-    for local in local_vars(entry):
+def _locals(entry, params):
+    for local in params.get_locals(entry):
         yield local
     if isinstance(entry, chc.Choice):
         for i, child in enumerate(entry.children):
-            lookup = option_output_temporaries(entry, i)
+            lookup = option_output_temporaries(entry, i, params)
             for param in get_passed_variables(entry, entry.children[i]):
                 try:
                     # Create a temporary local for this parameter...
@@ -226,28 +234,34 @@ def local_variables(entry):
                     # This variable isn't output from the choice...
                     pass
 
-def _passed_variables(entry, child_index):
+def local_variables(entry):
+    return _locals(entry, decode_params)
+
+def encode_local_variables(entry):
+    return _locals(entry, encode_params)
+
+def _passed_variables(entry, child_index, params):
     temp = {}
     if isinstance(entry, chc.Choice):
-        temp = option_output_temporaries(entry, child_index)
+        temp = option_output_temporaries(entry, child_index, params)
 
-    for param in get_passed_variables(entry, entry.children[child_index]):
+    for param in params.get_passed_variables(entry, entry.children[child_index]):
         try:
             # First check to see if the parameter is one that we map locally...
             yield Param(temp[param.name], param.OUT, param.type)
         except KeyError:
             yield param
 
-def is_pointer(name, entry):
+def is_pointer(name, entry, params):
     """Check to see if a variable is a pointer (ie: an output parameter)"""
-    return name in (p.name for p in get_params(entry) if p.direction == p.OUT)
+    return name in (p.name for p in params.get_params(entry) if p.direction == p.OUT)
 
-def _value_ref(name, entry):
-    if is_pointer(name, entry):
+def _value_ref(name, entry, params):
+    if is_pointer(name, entry, params):
         return '*%s' % name
     return name
 
-def call_params(parent, i, result_name):
+def _call_params(parent, i, result_name, params):
     # How we should reference the variable passed to the child is from the
     # following table;
     #
@@ -258,18 +272,23 @@ def call_params(parent, i, result_name):
     #         Output param |   *name    |    name     |
     #                       --------------------------
     result = ""
-    for param in _passed_variables(parent, i):
+    for param in _passed_variables(parent, i, params):
         if param.direction is param.OUT and param.name == MAGIC_UNKNOWN_NAME:
             result += ', %s' % result_name
         elif param.direction == param.IN:
-            result += ', %s' % _value_ref(param.name, parent)
+            result += ', %s' % _value_ref(param.name, parent, params)
         else:
-            if is_pointer(param.name, parent):
+            if is_pointer(param.name, parent, params):
                 result += ", %s" % param.name
             else:
                 result += ", &%s" % param.name
     return result
 
+def decode_passed_params(parent, i, result_name):
+    return _call_params(parent, i, result_name, decode_params)
+
+def encode_passed_params(parent, i):
+    return _call_params(parent, i, 'whoops', encode_params)
 
 _OPERATORS = {
         operator.__div__ : '/', 
@@ -281,14 +300,23 @@ _OPERATORS = {
         operator.rshift : '>>',
         }
 
-def value(entry, expr):
+def value(entry, expr, params=None, magic_expression=None, magic_name=None):
   """
   Convert an expression object to a valid C expression.
 
   entry -- The entry that will use this value.
   expr -- The bdec.expression.Expression instance to represent in C code.
+  params -- The parameters to use for finding variables. If None, it will use
+    the decode parameters (decode_params).
+  magic_expression -- If the 'magic_expression' is found it will be replaced
+    with the 'magic_name'.
+  magic_name -- The 'magic' name to use when 'magic_expression' is found.
   """
-  if isinstance(expr, int):
+  if params is None:
+      params = decode_params
+  if expr is magic_expression:
+      return magic_name
+  elif isinstance(expr, int):
       return str(expr)
   elif isinstance(expr, Constant):
       if expr.value >= (1 << 32):
@@ -297,10 +325,10 @@ def value(entry, expr):
           return "%iL" % expr.value
       return int(expr.value)
   elif isinstance(expr, ReferenceExpression):
-      return _value_ref(local_name(entry, expr.param_name()), entry)
+      return _value_ref(local_name(entry, expr.param_name()), entry, params)
   elif isinstance(expr, ArithmeticExpression):
-      left = value(entry, expr.left)
-      right = value(entry, expr.right)
+      left = value(entry, expr.left, params, magic_expression, magic_name)
+      right = value(entry, expr.right, params, magic_expression, magic_name)
 
       cast = ""
       left_type = _type_from_range(expression_range(expr.left, entry, raw_params))
@@ -316,7 +344,7 @@ def value(entry, expr):
           cast = "(%s)" % result_type
       return "(%s%s %s %s)" % (cast, left, _OPERATORS[expr.op], right)
   else:
-      raise Exception('Unknown length value', expression)
+      raise Exception('Unknown length value', expr)
 
 def enum_type_name(entry):
     return typename(settings.escaped_type(entry) + ' option')
@@ -376,41 +404,77 @@ def c_string(data):
     """Return a correctly quoted c-style string for an arbitrary binary string."""
     return '"%s"' % ''.join(_c_repr(char) for char in data)
 
-def get_expected(entry):
+def get_equals(entry):
     for constraint in entry.constraints:
         if isinstance(constraint, Equals):
-            value = constraint.limit
-            if entry.format == fld.Field.INTEGER:
-                return value
-            elif entry.format == fld.Field.TEXT:
-                return '{"%s", %i}' % (value.value, len(value.value))
-            elif entry.format == fld.Field.BINARY:
-                if settings.is_numeric(settings.ctype(entry)):
-                    # This is an integer type
-                    return value
-                else:
-                    # This is a bitbuffer type; add leading null bytes so we can
-                    # represent it in bytes.
-                    null = Data('\x00', 0, len(value.value) % 8)
-                    data = null + value.value
-                    return '{"%s", %i, %i}' % (data.bytes(), len(null), len(data))
-            else:
-                raise Exception("Don't know how to define a constant for %s!" % entry)
+            return constraint.limit
 
-    # No expected value was found; if the entry is hidden, return a \x00 value.
-    if entry.is_hidden():
-        length = entry.length.evaluate({})
+def get_expected(entry):
+    value = get_equals(entry)
+    if value is not None:
         if entry.format == fld.Field.INTEGER:
-            return 0
+            return value
         elif entry.format == fld.Field.TEXT:
-            return '{"%s", %i}' % ('\x00' * (length / 8), length / 8)
+            return '{"%s", %i}' % (value.value, len(value.value))
         elif entry.format == fld.Field.BINARY:
             if settings.is_numeric(settings.ctype(entry)):
                 # This is an integer type
-                return 0
+                return value
             else:
-                # This is a bitbuffer type
-                return '{"%s", 0, %i}' % ('\x00' * (length / 8), length)
+                # This is a bitbuffer type; add leading null bytes so we can
+                # represent it in bytes.
+                null = Data('\x00', 0, 8 - (len(value.value) % 8))
+                data = null + value.value
+                result = '{(unsigned char*)%s, %i, %i}' % (
+                        c_string(data.bytes()), len(null),
+                        len(data) - len(null))
+                return result
         else:
             raise Exception("Don't know how to define a constant for %s!" % entry)
+
+    # No expected value was found
+    if not contains_data(entry):
+        if is_value_referenced(entry):
+            # The field's value is referenced elsewhere, use the reference value.
+            return variable(entry.name)
+        else:
+            # The entry is hidden, so use a \x00 (null) value.
+            length = entry.length.evaluate({})
+            if entry.format == fld.Field.INTEGER:
+                return 0
+            elif entry.format == fld.Field.TEXT:
+                return '{"%s", %i}' % ('\x00' * (length / 8), length / 8)
+            elif entry.format == fld.Field.BINARY:
+                if settings.is_numeric(settings.ctype(entry)):
+                    # This is an integer type
+                    return 0
+                else:
+                    # This is a bitbuffer type
+                    return '{"%s", 0, %i}' % ('\x00' * (length / 8), length)
+            else:
+                raise Exception("Don't know how to define a constant for %s!" % entry)
+
+
+def is_empty_sequenceof(entry):
+    return isinstance(entry, SequenceOf) and not contains_data(entry)
+
+def set_mock_param(entry, i, param, child_variable):
+    """ Return an expression setting the parameter value in the mock object.
+
+    Mock objects are used when visible common entries are hidden locally; to
+    encode these we have to construct a temporary mock instance, populating
+    the parameters as necessary. This function is responsible for setting the
+    parameters within the mock object."""
+    child = entry.children[i]
+    for i, p in enumerate(encode_params.get_passed_variables(entry, child)):
+        if p.name == param.name:
+            break
+    else:
+        raise Exception('Failed to find param %s!' % param)
+    raw_param = raw_encode_params.get_passed_variables(entry, child)[i]
+    if raw_param.name == child.name:
+        # The child is the referenced instance
+        return '%s = %s;' % (child_variable, param.name)
+    else:
+        raise NotImplementedError("Setting sub-mock object isn't implement yet (%s)" % param)
 

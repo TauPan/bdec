@@ -59,17 +59,21 @@ def _detect_dependencies(children, is_hidden):
     only be decoded after the value children."""
     dependencies = defaultdict(list)
     for child in children:
-        for input in child.params:
-            if input.direction == input.IN:
-                # Find all other parameters using this child
-                users = []
-                for other in children:
-                    for output in other.params:
-                        if output.direction == output.OUT:
-                            if output.name == input.name:
-                                users.append(other)
-                                break
-                dependencies[child].extend(users)
+        for output in child.params:
+            if output.direction == output.OUT:
+                name = output.name.split('.')[0]
+                if name != child.name:
+                    # We have an output for another child; find out who it
+                    # is, and add a dependancy on it.
+                    for other in children:
+                        if other.name == name:
+                            dependencies[other].append(child)
+                        else:
+                            # Find all other parameters using this child
+                            for input in other.params:
+                                if input.direction == input.IN:
+                                    if output.name == input.name:
+                                        dependencies[other].append(child)
     return dependencies
 
 def _populate_dependencies(entry, child, dependencies, visited=None, chain=None):
@@ -109,6 +113,19 @@ def _encoding_order(encoder, is_hidden):
 
 
 class SequenceEncoder(EntryEncoder):
+    def __init__(self, *args, **kwargs):
+        EntryEncoder.__init__(self, *args, **kwargs)
+        self._order = None
+
+    def order(self):
+        if self._order is None:
+            # We perform dependency analysis on the child parameters to determine
+            # the order in which the child entries should be encoded. For example,
+            # we can't encode a hidden field that is referenced elsewhere without
+            # first encoding the location where it is referenced to try and
+            # determine the value of the hidden field.
+            self._order = _encoding_order(self, self.is_hidden)
+        return self._order
 
     def _is_unknown_value(self, value):
         if value in [None, '', MockSequenceValue()]:
@@ -144,14 +161,8 @@ class SequenceEncoder(EntryEncoder):
                 raise MissingValueError(self.entry)
             self._solve(self.entry.value, int(value), context)
 
-        # We perform dependency analysis on the child parameters to determine
-        # the order in which the child entries should be encoded. For example,
-        # we can't encode a hidden field that is referenced elsewhere without
-        # first encoding the location where it is referenced to try and
-        # determine the value of the hidden field.
-        order = _encoding_order(self, self.is_hidden)
         sequence_data = {}
-        for child in order:
+        for child in self.order():
             data = reduce(operator.add, self._encode_child(child, query, value, 0, context), Data())
             sequence_data[child] = data
         for child in self.children:
