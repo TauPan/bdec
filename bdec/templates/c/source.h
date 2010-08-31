@@ -127,11 +127,11 @@ void ${settings.free_name(entry)}(${settings.ctype(entry)}* value);
  * value -- The entry to be encoded.
  * result -- The encoded data will be appended to this instance.
  */
-%if contains_data(entry):
+    %if contains_data(entry):
 int ${settings.encode_name(entry)}(${settings.ctype(entry)}* value, struct EncodedData* result);
-%else:
+    %else:
 int ${settings.encode_name(entry)}(struct EncodedData* result);
-%endif
+    %endif
 %endif
 
 /**
@@ -144,13 +144,15 @@ void ${settings.print_name(entry)}(unsigned int offset, const char* name);
 %endif
 
 <%def name="recursiveMethodsDeclaration(entry)" buffered="True">
-
+${entry}
   %if contains_data(entry):
 int ${settings.stringto_name(entry)}(const char *string, ${settings.ctype(entry)} **result);
 int ${settings.tostring_name(entry)}(${settings.ctype(entry)} *data, char **result);
   %endif
 
   %for child in entry.children:
+  ${child.entry}
+  ${settings.ctype(child.entry)}
     %if child.entry not in common:
 ${recursiveMethodsDeclaration(child.entry)}
     %endif
@@ -159,6 +161,18 @@ ${recursiveMethodsDeclaration(child.entry)}
 </%def>
 
 ${recursiveMethodsDeclaration(entry)}
+
+<%def name="test(e)" buffered="True">
+${e}
+%for c in e.children:
+    ${test(c)}
+%endfor
+</%def>
+
+##%for e in common:
+##    ${e}
+##    ${test(e)}
+##%endfor
 
 #ifdef __cplusplus
 }
