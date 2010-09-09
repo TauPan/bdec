@@ -163,7 +163,7 @@ ${recursiveMethodsDeclaration(child.entry)}
 ${recursiveMethodsDeclaration(entry)}
 
 <%def name="test(e)" buffered="True">
-${e}
+//${e}
 %for c in e.children:
     ${test(c)}
 %endfor
