@@ -22,7 +22,9 @@ import string
 import bdec.choice as chc
 from bdec.constraints import Equals
 from bdec.data import Data
+from bdec.encode import get_encoder
 from bdec.entry import Entry
+from bdec.inspect.solver import solve_expression
 import bdec.field as fld
 import bdec.sequence as seq
 from bdec.sequenceof import SequenceOf
@@ -30,7 +32,7 @@ from bdec.expression import ArithmeticExpression, ReferenceExpression, Constant
 from bdec.inspect.param import Local, Param, MAGIC_UNKNOWN_NAME
 from bdec.inspect.type import EntryLengthType, EntryValueType, IntegerType, EntryType, expression_range
 
-keywords=['char', 'int', 'short', 'long', 'float', 'if', 'then', 'else', 'struct', 'for', 'null', 'value', 'signed', 'true', 'false']
+keywords=['char', 'int', 'short', 'long', 'float', 'if', 'then', 'else', 'struct', 'for', 'null', 'signed', 'true', 'false']
 
 # Also define our types as keywords, as we don't want the generated names to
 # clash with our types.
@@ -182,7 +184,9 @@ def _get_param_string(params):
     result = ""
     for param in params:
         if param.direction is param.IN:
-            result += ", %s %s" % (ctype(param.type), param.name)
+            type = ctype(param.type)
+            pointer = '*' if not is_numeric(type) else ''
+            result += ", %s%s %s" % (type, pointer, param.name)
         else:
             result += ", %s* %s" % (ctype(param.type), param.name)
     return result
@@ -253,8 +257,19 @@ def _passed_variables(entry, child_index, params):
             yield param
 
 def is_pointer(name, entry, params):
-    """Check to see if a variable is a pointer (ie: an output parameter)"""
-    return name in (p.name for p in params.get_params(entry) if p.direction == p.OUT)
+    """Check to see if a local variable or a parameter is a pointer.
+
+    name -- The name of the local variable / parameter
+    entry -- The entry containing the variable / parameter
+    params -- A _Parameters instance.
+    """
+    # If the parameter is an output parameter, it must be a pointer.
+    if name in (p.name for p in params.get_params(entry) if p.direction == p.OUT):
+        return True
+    # If it's an input (but is of a complex type), it's also passed as a
+    # pointer.
+    complex_types = list(p.name for p in params.get_params(entry) if not is_numeric(ctype(p.type)))
+    return name in complex_types
 
 def _value_ref(name, entry, params):
     if is_pointer(name, entry, params):
@@ -273,22 +288,34 @@ def _call_params(parent, i, result_name, params):
     #                       --------------------------
     result = ""
     for param in _passed_variables(parent, i, params):
-        if param.direction is param.OUT and param.name == MAGIC_UNKNOWN_NAME:
-            result += ', %s' % result_name
-        elif param.direction == param.IN:
-            result += ', %s' % _value_ref(param.name, parent, params)
+        if param.direction == param.OUT:
+            expects_pointer = True
         else:
-            if is_pointer(param.name, parent, params):
-                result += ", %s" % param.name
-            else:
-                result += ", &%s" % param.name
+            # In parameters expect a pointer for complex types...
+            expects_pointer = not is_numeric(ctype(param.type))
+
+        is_local_pointer = is_pointer(param.name, parent, params)
+        local_name = param.name
+        if param.name == MAGIC_UNKNOWN_NAME:
+            # All 'magic' parameters (ie: those that represent the child's
+            # value, not just references it will use) are pointers.
+            is_local_pointer = True
+            local_name = result_name
+
+        if expects_pointer == is_local_pointer:
+            # If both us & the child are the same, just pass it through
+            result += ', %s' % local_name
+        elif expects_pointer:
+            result += ', &%s' % local_name
+        else:
+            result += ', *%s' % local_name
     return result
 
 def decode_passed_params(parent, i, result_name):
     return _call_params(parent, i, result_name, decode_params)
 
-def encode_passed_params(parent, i):
-    return _call_params(parent, i, 'whoops', encode_params)
+def encode_passed_params(parent, i, result_name):
+    return _call_params(parent, i, result_name, encode_params)
 
 _OPERATORS = {
         operator.__div__ : '/', 
@@ -404,13 +431,56 @@ def c_string(data):
     """Return a correctly quoted c-style string for an arbitrary binary string."""
     return '"%s"' % ''.join(_c_repr(char) for char in data)
 
-def get_equals(entry):
+def _get_equals(entry):
     for constraint in entry.constraints:
         if isinstance(constraint, Equals):
             return constraint.limit
 
+def _are_expression_inputs_available(expr, entry):
+    """Check to see if all of the inputs to an expression are available."""
+    names = [p.name for p in encode_params.get_params(entry) if p.direction == p.IN]
+
+    result = ReferenceExpression('result')
+    inputs = [p.name for p in encode_params.get_params(entry) if p.direction == p.IN]
+    constant, components = solve_expression(result, expr, entry, raw_decode_params, inputs)
+    for ref, expr, inverted in components:
+        if variable(ref.name) not in names:
+            # The expression references an item that isn't being passed in.
+            return False
+    return True
+
+def get_sequence_value(entry):
+    """Get a sequences value when encoding.
+
+    Returns a (value, should_solve) tuple."""
+    # When we have an expected value, we should using that as the value to solve...
+    should_solve = True
+    in_params = [p.name for p in encode_params.get_params(entry) if p.direction == p.IN]
+    if contains_data(entry):
+        # This entry is visible; use its 'value' input.
+        value_name = 'value' if is_numeric(ctype(entry)) else 'value->value'
+    elif variable(entry.name) in in_params:
+        # This entry has been referenced elsewhere, and it's value is
+        # being passed as an exression.
+        value_name = variable(entry.name)
+    elif _are_expression_inputs_available(entry.value, entry):
+        # All of the components of this entrie's value are being passed in (ie:
+        # we can determine its value)
+        value_name = value(entry, entry.value)
+    elif _get_equals(entry) is not None:
+        # This entry has an expected value
+        value_name = _get_equals(entry)
+    else:
+        # We cannot determine the value of this entry! It's probably being
+        # derived from child values.
+        # This isn't being passed in an input parameter! Presumably
+        # it is has a fixed value, or is derived from other values...
+        should_solve = False
+        value_name = value(entry, entry.value)
+    return value_name, should_solve
+
 def get_expected(entry):
-    value = get_equals(entry)
+    value = _get_equals(entry)
     if value is not None:
         if entry.format == fld.Field.INTEGER:
             return value
@@ -432,27 +502,21 @@ def get_expected(entry):
         else:
             raise Exception("Don't know how to define a constant for %s!" % entry)
 
-    # No expected value was found
-    if not contains_data(entry):
-        if is_value_referenced(entry):
-            # The field's value is referenced elsewhere, use the reference value.
-            return variable(entry.name)
+def get_null_mock_value(entry):
+    # The entry is hidden, so use a \x00 (null) value.
+    if entry.format == fld.Field.INTEGER:
+        return 0
+    elif entry.format == fld.Field.TEXT:
+        return '{"%s", %i}' % ('\x00' * (length / 8), length / 8)
+    elif entry.format == fld.Field.BINARY:
+        if settings.is_numeric(settings.ctype(entry)):
+            # This is an integer type
+            return 0
         else:
-            # The entry is hidden, so use a \x00 (null) value.
-            length = entry.length.evaluate({})
-            if entry.format == fld.Field.INTEGER:
-                return 0
-            elif entry.format == fld.Field.TEXT:
-                return '{"%s", %i}' % ('\x00' * (length / 8), length / 8)
-            elif entry.format == fld.Field.BINARY:
-                if settings.is_numeric(settings.ctype(entry)):
-                    # This is an integer type
-                    return 0
-                else:
-                    # This is a bitbuffer type
-                    return '{"%s", 0, %i}' % ('\x00' * (length / 8), length)
-            else:
-                raise Exception("Don't know how to define a constant for %s!" % entry)
+            # This is a bitbuffer type
+            return '{"%s", 0, %i}' % ('\x00' * ((length + 7) / 8), length)
+    else:
+        raise Exception("Don't know how to define a constant for %s!" % entry)
 
 
 def is_empty_sequenceof(entry):
@@ -466,15 +530,59 @@ def set_mock_param(entry, i, param, child_variable):
     the parameters as necessary. This function is responsible for setting the
     parameters within the mock object."""
     child = entry.children[i]
-    for i, p in enumerate(encode_params.get_passed_variables(entry, child)):
+    for i, p in enumerate(stupid_ugly_expression_encode_params.get_passed_variables(entry, child)):
         if p.name == param.name:
             break
     else:
         raise Exception('Failed to find param %s!' % param)
-    raw_param = raw_encode_params.get_passed_variables(entry, child)[i]
+    raw_param = raw_encode_expression_params.get_passed_variables(entry, child)[i]
     if raw_param.name == child.name:
         # The child is the referenced instance
         return '%s = %s;' % (child_variable, param.name)
     else:
         raise NotImplementedError("Setting sub-mock object isn't implement yet (%s)" % param)
+
+def sequence_encoder_order(entry):
+    """Return the order we should be encoding the child entries in a sequence.
+
+    Returns a iterable of (child_offset, start_temp_buffer, buffer_name, end_temp_buffer)
+    tuples."""
+    result_offset = 0
+    temp_buffers = []
+    encoder = get_encoder(entry, raw_encode_expression_params)
+    for child_encoder in encoder.order():
+        child = child_encoder.child
+        i = entry.children.index(child)
+
+        start_temp_buffer = None
+        if i == result_offset:
+            # We can encode this entry directly into the result buffer
+            buffer_name = 'result'
+            result_offset += 1
+        else:
+            # This entry must be buffered (it cannot be directly appended onto result)
+            for b in  temp_buffers:
+                if b['end'] == i:
+                    # We found an existing temporary buffer we can append to
+                    temp_buffer = b
+                    break
+            else:
+                # There isn't an existing temporary buffer we can reuse; create a new one.
+                temp_buffer = {'name':'tempBuffer%i' % len(temp_buffers), 'start':i, 'end':i}
+                temp_buffers.append(temp_buffer)
+            temp_buffer['end'] += 1
+            buffer_name = '&%s' % temp_buffer['name']
+
+            if temp_buffer['start'] == i:
+                # We found a temporary buffer that starts here
+                start_temp_buffer = temp_buffer['name']
+
+        for temp_buffer in temp_buffers:
+            if temp_buffer['start'] == result_offset:
+                # We found a temporary buffer that ends here
+                end_temp_buffer = temp_buffer['name']
+                break
+        else:
+            end_temp_buffer = None
+        yield i, start_temp_buffer, buffer_name, end_temp_buffer
 
