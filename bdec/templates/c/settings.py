@@ -28,7 +28,7 @@ from bdec.inspect.solver import solve_expression
 import bdec.field as fld
 import bdec.sequence as seq
 from bdec.sequenceof import SequenceOf
-from bdec.expression import ArithmeticExpression, ReferenceExpression, Constant
+from bdec.expression import ArithmeticExpression, ReferenceExpression, Constant, UndecodedReferenceError
 from bdec.inspect.param import Local, Param, MAGIC_UNKNOWN_NAME
 from bdec.inspect.type import EntryLengthType, EntryValueType, IntegerType, EntryType, expression_range
 
@@ -469,7 +469,7 @@ def get_sequence_value(entry):
         value_name = value(entry, entry.value)
     elif _get_equals(entry) is not None:
         # This entry has an expected value
-        value_name = _get_equals(entry)
+        value_name = value(entry, _get_equals(entry))
     else:
         # We cannot determine the value of this entry! It's probably being
         # derived from child values.
@@ -480,21 +480,21 @@ def get_sequence_value(entry):
     return value_name, should_solve
 
 def get_expected(entry):
-    value = _get_equals(entry)
-    if value is not None:
+    expected = _get_equals(entry)
+    if expected is not None:
         if entry.format == fld.Field.INTEGER:
-            return value
+            return value(entry, expected)
         elif entry.format == fld.Field.TEXT:
-            return '{"%s", %i}' % (value.value, len(value.value))
+            return '{"%s", %i}' % (expected.value, len(expected.value))
         elif entry.format == fld.Field.BINARY:
             if settings.is_numeric(settings.ctype(entry)):
                 # This is an integer type
-                return value
+                return value(entry, expected)
             else:
                 # This is a bitbuffer type; add leading null bytes so we can
                 # represent it in bytes.
-                null = Data('\x00', 0, 8 - (len(value.value) % 8))
-                data = null + value.value
+                null = Data('\x00', 0, 8 - (len(expected.value) % 8))
+                data = null + expected.value
                 result = '{(unsigned char*)%s, %i, %i}' % (
                         c_string(data.bytes()), len(null),
                         len(data) - len(null))
@@ -502,25 +502,69 @@ def get_expected(entry):
         else:
             raise Exception("Don't know how to define a constant for %s!" % entry)
 
+def _is_length_known(entry):
+    inputs = [p.name for p in raw_encode_params.get_params(entry) if p.direction == p.IN]
+    constant, components = solve_expression(entry.length, entry.length, entry, raw_decode_params, inputs)
+    return len(components) == 0
+
 def get_null_mock_value(entry):
-    # The entry is hidden, so use a \x00 (null) value.
-    if entry.format == fld.Field.INTEGER:
-        return 0
-    elif entry.format == fld.Field.TEXT:
-        return '{"%s", %i}' % ('\x00' * (length / 8), length / 8)
-    elif entry.format == fld.Field.BINARY:
-        if settings.is_numeric(settings.ctype(entry)):
-            # This is an integer type
-            return 0
+    """Get a mock value for the given entry.
+
+    Returns a (mock string, should_free_buffer) tuple."""
+    should_free_buffer = False
+    if settings.is_numeric(settings.ctype(entry)):
+        return 0, should_free_buffer
+
+    try:
+        # If this entry has a fixed (known) length, just allocate a null
+        # buffer on the stack.
+        length = entry.length.evaluate({})
+        data = '"\\000"' * ((length + 7) / 8)
+    except UndecodedReferenceError:
+        if _is_length_known(entry):
+            # There is an explicit length for this entry.
+            length = value(entry, entry.length, encode_params)
+            data = "calloc((%s) / 8, 1)" % length
+            should_free_buffer = True
         else:
-            # This is a bitbuffer type
-            return '{"%s", 0, %i}' % ('\x00' * ((length + 7) / 8), length)
+            # The length isn't known; just default it to zero.
+            length = 0
+            data = '""'
+    if entry.format == fld.Field.TEXT:
+        value_text = '{%s, (%s) / 8}' % (data, length)
+    if entry.format == fld.Field.HEX:
+        value_text = '{(unsigned char*)%s, (%s) / 8}' % (data, length)
+    elif entry.format == fld.Field.BINARY:
+        value_text = '{(unsigned char*)%s, 0, %s}' % (data, length)
     else:
         raise Exception("Don't know how to define a constant for %s!" % entry)
+    return value_text, should_free_buffer
 
 
 def is_empty_sequenceof(entry):
     return isinstance(entry, SequenceOf) and not contains_data(entry)
+
+def _get_child_reference(entry, names):
+    if not names:
+        # This is the referenced item.
+        if is_numeric(ctype(entry)):
+            return ''
+        elif isinstance(entry, seq.Sequence) and entry.value is not None:
+            return '.value'
+        raise NotImplementedError("Mocking %s is currently not supported" % entry)
+
+    name = names.pop(0)
+    for child in entry.children:
+        if child.name == name:
+            break
+    else:
+        raise Exception('Failed to find child named %s in %s' % (name, entry))
+
+    if isinstance(entry, Sequence):
+        result = '.%s' % variable(child.name)
+    else:
+        raise NotImplementedError('Mock references under %s not supported' % entry)
+    return result + _get_child_reference(child.entry, names)
 
 def set_mock_param(entry, i, param, child_variable):
     """ Return an expression setting the parameter value in the mock object.
@@ -536,16 +580,16 @@ def set_mock_param(entry, i, param, child_variable):
     else:
         raise Exception('Failed to find param %s!' % param)
     raw_param = raw_encode_expression_params.get_passed_variables(entry, child)[i]
-    if raw_param.name == child.name:
-        # The child is the referenced instance
-        return '%s = %s;' % (child_variable, param.name)
-    else:
-        raise NotImplementedError("Setting sub-mock object isn't implement yet (%s)" % param)
+
+    # Drill down into the structure, and set the appropriate member.
+    names = list(variable(p) for p in raw_param.name.split('.'))
+    names.pop(0)
+    return '%s%s = %s;' % (child_variable, _get_child_reference(child.entry, names), param.name)
 
 def sequence_encoder_order(entry):
     """Return the order we should be encoding the child entries in a sequence.
 
-    Returns a iterable of (child_offset, start_temp_buffer, buffer_name, end_temp_buffer)
+    Returns a iterable of (child_offset, start_temp_buffer, buffer_name, end_temp_buffers)
     tuples."""
     result_offset = 0
     temp_buffers = []
@@ -577,12 +621,19 @@ def sequence_encoder_order(entry):
                 # We found a temporary buffer that starts here
                 start_temp_buffer = temp_buffer['name']
 
-        for temp_buffer in temp_buffers:
-            if temp_buffer['start'] == result_offset:
-                # We found a temporary buffer that ends here
-                end_temp_buffer = temp_buffer['name']
-                break
-        else:
-            end_temp_buffer = None
-        yield i, start_temp_buffer, buffer_name, end_temp_buffer
+        # Check for temporary buffers that start here; not that there can be
+        # several temp buffers that need to be chained together (see the
+        # xml/089_length_reference regression test).
+        end_temp_buffers = []
+        should_stop = False
+        while not should_stop:
+            for temp_buffer in temp_buffers:
+                if temp_buffer['start'] == result_offset:
+                    # We found a temporary buffer that ends here
+                    end_temp_buffers.append(temp_buffer['name'])
+                    result_offset = temp_buffer['end']
+                    break
+            else:
+                should_stop = True
+        yield i, start_temp_buffer, buffer_name, end_temp_buffers
 

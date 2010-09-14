@@ -628,6 +628,7 @@ ${recursivePrint(entry, False)}
 </%def>
 
 <%def name="encodeField(entry)" buffered="True">
+    <% should_free_buffer = False %>
     %if contains_data(entry):
     <%
        # This entry has a visible value; use its passed in value object.
@@ -659,7 +660,8 @@ ${recursivePrint(entry, False)}
             %endif
         %else:
             ## This entry doesn't have a known value; mock it.
-    ${settings.ctype(entry)} ${value_name} = ${settings.get_null_mock_value(entry)};
+            <% mock_value, should_free_buffer = settings.get_null_mock_value(entry) %>
+    ${settings.ctype(entry)} ${value_name} = ${mock_value};
         %endif
     %endif
     %if entry.format == Field.INTEGER:
@@ -686,31 +688,36 @@ ${recursivePrint(entry, False)}
     %else:
       <% raise Exception("Don't know how to encode field %s!" % entry) %>
     %endif
+
+    %if should_free_buffer:
+    free(${value_name}.buffer);
+    %endif
     %if is_value_referenced(entry) and contains_data(entry):
     *${entry.name |variable} = ${value_name};
     %endif
 </%def>
 
-<%def name="solve(entry, expression, value_name)">
+<%def name="solve(entry, expression, value_name, prefix)">
     <%
        magic_expression = expression
-       inputs = [p.name for p in encode_params.get_params(entry) if p.direction == p.IN]
+       inputs = [p.name for p in raw_encode_params.get_params(entry) if p.direction == p.IN]
        constant, components = solve_expression(magic_expression, expression, entry, raw_decode_params, inputs)
        try:
           constant = constant.evaluate({})
        except UndecodedReferenceError:
            pass
     %>
-    ${settings._type_from_range(erange(expression, entry, raw_decode_params))} remainder = ${value_name};
+    <% remainder = variable('%s remainder' % prefix) %>
+    ${settings._type_from_range(erange(expression, entry, raw_decode_params))} ${remainder} = ${value_name};
     %if constant != 0:
-    remainder -= ${settings.value(entry, constant, encode_params)};
+    ${remainder} -= ${settings.value(entry, constant, encode_params)};
     %endif
     %for ref, expr, invert_expr in components:
     <% variable_name = _value_ref(local_name(entry, ref.param_name()), entry, encode_params) %>
-    ${variable_name} = ${settings.value(entry, invert_expr, encode_params, magic_expression, 'remainder')};
-    remainder -= ${settings.value(entry, expr, encode_params)};
+    ${variable_name} = ${settings.value(entry, invert_expr, encode_params, magic_expression, remainder)};
+    ${remainder} -= ${settings.value(entry, expr, encode_params)};
     %endfor
-    if (remainder != 0)
+    if (${remainder} != 0)
     {
         // We failed to solve this expression...
         return 0;
@@ -722,12 +729,12 @@ ${recursivePrint(entry, False)}
       <% value_name, should_solve = settings.get_sequence_value(entry) %>
       %if should_solve:
     ${checkConstraints(entry, value_name, None)}
-    ${solve(entry, entry.value, value_name)}
+    ${solve(entry, entry.value, value_name, 'value')}
       %endif
     %endif
 
     <% temp_buffers = [] %>
-    %for i, start_temp_buffer, buffer_name, end_temp_buffer in settings.sequence_encoder_order(entry):
+    %for i, start_temp_buffer, buffer_name, end_temp_buffers in settings.sequence_encoder_order(entry):
       <% child = entry.children[i] %>
       %if start_temp_buffer is not None:
     struct EncodedData ${start_temp_buffer} = {0};
@@ -740,9 +747,9 @@ ${recursivePrint(entry, False)}
       %endfor
         return 0;
     }
-      %if end_temp_buffer:
+      %for temp_buffer in end_temp_buffers:
     appendEncodedBuffer(result, &${temp_buffer});
-      %endif
+      %endfor
     %endfor
     %for temp_buffer in temp_buffers:
     free(${temp_buffer}.buffer);
@@ -805,7 +812,7 @@ encode_successful:
     %endif
 
     %if entry.count is not None:
-    ${solve(entry, entry.count, 'i')}
+    ${solve(entry, entry.count, 'i', 'count')}
     %endif
 </%def>
 
@@ -823,7 +830,7 @@ ${static}int ${settings.encode_name(entry)}(struct EncodedData* result${settings
     ${settings.ctype(local.type)} ${local.name};
   %endfor
 
-  %if entry.length is not None:
+  %if entry.length is not None or is_length_referenced(entry):
   int startBit = result->num_bits;
   %endif
 
@@ -840,7 +847,10 @@ ${static}int ${settings.encode_name(entry)}(struct EncodedData* result${settings
   %endif
 
   %if entry.length is not None:
-    ${solve(entry, entry.length, 'result->num_bits - startBit')}
+    ${solve(entry, entry.length, 'result->num_bits - startBit', 'length')}
+  %endif
+  %if is_length_referenced(entry):
+    *${entry.name + ' length' |variable} = result->num_bits - startBit;
   %endif
     return 1;
 }
