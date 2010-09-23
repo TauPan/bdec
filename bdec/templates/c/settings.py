@@ -98,9 +98,9 @@ def _biggest(types):
 
 def _integer_type(type):
     """Choose an appropriate integral type for the given type."""
-    return _type_from_range(type.range(raw_params))
+    return type_from_range(type.range(raw_params))
 
-def _type_from_range(range):
+def type_from_range(range):
     if range.min is None:
         # This number doesn't have a minimum value; choose the type that can
         # represent the most negative number.
@@ -276,6 +276,30 @@ def _value_ref(name, entry, params):
         return '*%s' % name
     return name
 
+def local_reference_name(entry, ref, params):
+    return False, _value_ref(local_name(entry, ref.param_name()), entry, params)
+
+def get_reference_stack(entries, names):
+    """Get the new stack pointing to a given referenced.
+
+    entries -- The stack of (entry, name) tuples, it will starting searching
+        at the end for the referenced entry.
+    names -- A list of named entries to find.
+    return -- The new stack of (entry,  name) tuples."""
+    # TODO: At the moment it only walks down the reference stack; it should also
+    # attempt to walk up it.
+    entry_stack = list(entries)
+    entry_stack += _get_child_entries(entries[-1][0], names)
+    return entry_stack
+
+def relative_reference_name(entries, ref, local_name):
+    """Return the name of the referenced entry relative to the top of the entries stack."""
+    if ':' in ref.name:
+        # This entry is hidden, so we should store it locally.
+        return True, variable('temp ' + ref.name)
+    entry_stack = get_reference_stack(entries, ref.name.split('.'))
+    return False, '%s.%s' % (local_name, _get_child_reference(entry_stack[1:]))
+
 def _call_params(parent, i, result_name, params):
     # How we should reference the variable passed to the child is from the
     # following table;
@@ -327,7 +351,7 @@ _OPERATORS = {
         operator.rshift : '>>',
         }
 
-def value(entry, expr, params=None, magic_expression=None, magic_name=None):
+def value(entry, expr, params=None, magic_expression=None, magic_name=None, ref_name=None):
   """
   Convert an expression object to a valid C expression.
 
@@ -339,6 +363,7 @@ def value(entry, expr, params=None, magic_expression=None, magic_name=None):
     with the 'magic_name'.
   magic_name -- The 'magic' name to use when 'magic_expression' is found.
   """
+  ref_name = ref_name or local_reference_name
   if params is None:
       params = decode_params
   if expr is magic_expression:
@@ -352,15 +377,15 @@ def value(entry, expr, params=None, magic_expression=None, magic_name=None):
           return "%iL" % expr.value
       return int(expr.value)
   elif isinstance(expr, ReferenceExpression):
-      return _value_ref(local_name(entry, expr.param_name()), entry, params)
+      return ref_name(entry, expr, params)[1]
   elif isinstance(expr, ArithmeticExpression):
-      left = value(entry, expr.left, params, magic_expression, magic_name)
-      right = value(entry, expr.right, params, magic_expression, magic_name)
+      left = value(entry, expr.left, params, magic_expression, magic_name, ref_name)
+      right = value(entry, expr.right, params, magic_expression, magic_name, ref_name)
 
       cast = ""
-      left_type = _type_from_range(expression_range(expr.left, entry, raw_params))
-      right_type = _type_from_range(expression_range(expr.right, entry, raw_params))
-      result_type = _type_from_range(expression_range(expr, entry, raw_params))
+      left_type = type_from_range(expression_range(expr.left, entry, raw_params))
+      right_type = type_from_range(expression_range(expr.right, entry, raw_params))
+      result_type = type_from_range(expression_range(expr, entry, raw_params))
 
       types = unsigned_types.copy()
       types.update(signed_types)
@@ -532,7 +557,7 @@ def get_null_mock_value(entry):
             data = '""'
     if entry.format == fld.Field.TEXT:
         value_text = '{%s, (%s) / 8}' % (data, length)
-    if entry.format == fld.Field.HEX:
+    elif entry.format == fld.Field.HEX:
         value_text = '{(unsigned char*)%s, (%s) / 8}' % (data, length)
     elif entry.format == fld.Field.BINARY:
         value_text = '{(unsigned char*)%s, 0, %s}' % (data, length)
@@ -544,47 +569,48 @@ def get_null_mock_value(entry):
 def is_empty_sequenceof(entry):
     return isinstance(entry, SequenceOf) and not contains_data(entry)
 
-def _get_child_reference(entry, names):
-    if not names:
+def _get_child_entries(entry, child_names):
+    """Get an iterable to the list of entries from entry to the items defined by names."""
+    if child_names:
+        child_name = child_names.pop(0)
+        for child in entry.children:
+            if child.name == child_name:
+                break
+        else:
+            raise Exception('Failed to find child named %s in %s' % (child_name, entry))
+
+        yield child.entry, variable(child.name)
+        for entry, name in _get_child_entries(child.entry, child_names):
+            yield entry, name
+
+def _get_child_reference(entries):
+    """Get the c-style reference to the entry specified in 'entries'.
+
+    For example, ${header.data length} would be return 'header.dataLength'.
+    """
+    assert len(entries) != 0
+    entry, result = entries.pop(0)
+    if not entries:
         # This is the referenced item.
         if is_numeric(ctype(entry)):
-            return ''
+            pass
         elif isinstance(entry, seq.Sequence) and entry.value is not None:
-            return '.value'
-        raise NotImplementedError("Mocking %s is currently not supported" % entry)
-
-    name = names.pop(0)
-    for child in entry.children:
-        if child.name == name:
-            break
+            result = '%s.value' % result
+        else:
+            raise NotImplementedError("Mocking %s is currently not supported" % entry)
     else:
-        raise Exception('Failed to find child named %s in %s' % (name, entry))
+        # We are referencing a child of this entry
+        if isinstance(entry, seq.Sequence):
+            result = '%s.%s' % (result, _get_child_reference(entries))
+        else:
+            raise NotImplementedError('Mock references under %s not supported' % entry)
+    return result
 
-    if isinstance(entry, Sequence):
-        result = '.%s' % variable(child.name)
-    else:
-        raise NotImplementedError('Mock references under %s not supported' % entry)
-    return result + _get_child_reference(child.entry, names)
-
-def set_mock_param(entry, i, param, child_variable):
-    """ Return an expression setting the parameter value in the mock object.
-
-    Mock objects are used when visible common entries are hidden locally; to
-    encode these we have to construct a temporary mock instance, populating
-    the parameters as necessary. This function is responsible for setting the
-    parameters within the mock object."""
+def get_child_variable(entry, i, param, child_variable):
+    """Return the variable referenced by the parameter pass to the i-th child of entry."""
     child = entry.children[i]
-    for i, p in enumerate(stupid_ugly_expression_encode_params.get_passed_variables(entry, child)):
-        if p.name == param.name:
-            break
-    else:
-        raise Exception('Failed to find param %s!' % param)
-    raw_param = raw_encode_expression_params.get_passed_variables(entry, child)[i]
-
-    # Drill down into the structure, and set the appropriate member.
-    names = list(variable(p) for p in raw_param.name.split('.'))
-    names.pop(0)
-    return '%s%s = %s;' % (child_variable, _get_child_reference(child.entry, names), param.name)
+    return _get_child_reference([(child.entry, child_variable)] +
+            list(_get_child_entries(child.entry, param.name.split('.')[1:])))
 
 def sequence_encoder_order(entry):
     """Return the order we should be encoding the child entries in a sequence.
@@ -636,4 +662,13 @@ def sequence_encoder_order(entry):
             else:
                 should_stop = True
         yield i, start_temp_buffer, buffer_name, end_temp_buffers
+
+def breakup_expression(expression, entry):
+   inputs = [p.name for p in raw_encode_params.get_params(entry) if p.direction == p.IN]
+   constant, components = solve_expression(expression, expression, entry, raw_decode_params, inputs)
+   try:
+      constant = constant.evaluate({})
+   except UndecodedReferenceError:
+       pass
+   return constant, components
 

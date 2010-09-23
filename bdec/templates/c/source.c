@@ -111,15 +111,9 @@
     <% value = variable(entry.name + ' value') %>
     ${settings.ctype(entry)} ${value};
   %if settings.is_numeric(settings.ctype(entry)):
-    %if entry.encoding == Field.LITTLE_ENDIAN:
-    ${value} = decode_little_endian_integer(buffer, ${settings.value(entry, entry.length)});
-    %else:
-      %if EntryValueType(entry).range(raw_params).max <= 0xffffffff:
-    ${value} = decode_integer(buffer, ${settings.value(entry, entry.length)});
-      %else:
-    ${value} = decode_long_integer(buffer, ${settings.value(entry, entry.length)});
-      %endif
-    %endif
+      <% prefix = 'little_endian_' if entry.encoding == Field.LITTLE_ENDIAN else '' %>
+      <% prefix = 'long_%s' % prefix if EntryValueType(entry).range(raw_params).max > 0xffffffff else prefix %>
+    ${value} = decode_${prefix}integer(buffer, ${settings.value(entry, entry.length)});
     %if is_value_referenced(entry):
     *${entry.name |variable} = ${value};
     %endif
@@ -609,14 +603,46 @@ ${recursivePrint(entry, False)}
   <% prefix = '' if is_successful else '!' %>
   %if contains_data(child.entry):
       %if not child_contains_data(child):
-        ## The child is a common entry that has been hidden; we need to create a
-        ## pretend variable to pass in. We'll reuse the 'unused' local variable;
-        ## this is a little hackish...
+        ## The child is a common entry that has been hidden. We need to create
+        ## a mock object, as the encode function expects an object to encode.
+        ## We need to populate this variable with any output parameters that
+        ## have been referenced from it.
         <% child_variable = '%s' % variable('unused %s' % child.name) %>
     memset(&${child_variable}, 0, sizeof(${settings.ctype(child.entry)}));
-        %for param in stupid_ugly_expression_encode_params.get_passed_variables(entry, child):
-            %if param.direction == param.OUT:
-    ${settings.set_mock_param(entry, i, param, child_variable)}
+        <% raw_params = raw_encode_expression_params.get_passed_variables(entry, child) %>
+        <% esc_params = stupid_ugly_expression_encode_params.get_passed_variables(entry, child) %>
+        %for raw_param, esc_param in zip(raw_params, esc_params):
+            %if raw_param.direction == raw_param.OUT and raw_encode_expression_params.is_output_param_used(entry, child, raw_param):
+              ## For every expression parameter that is passed out, that is an
+              ## value that during encoding comes from the value parameter we
+              ## pass in. Thus we have to set the mock parameters appropriately...
+              <% value_name = settings.get_child_variable(entry, i, raw_param, child_variable) %>
+    ${value_name} = ${esc_param.name};
+              <%
+              # If the parameter we just solved is a sequence that references
+              # other visible entries in the mocked sequence, we need to
+              # recursively solve for those entries too.
+              dependencies = [
+                (settings.get_reference_stack([(child.entry, child.name)], raw_param.name.split('.')[1:]), value_name, raw_param.name)
+                ]
+              %>
+              %while dependencies:
+                <% entry_stack, value_name, name = dependencies.pop() %>
+                <% referenced = entry_stack[-1][0] %>
+                %if isinstance(referenced, Sequence):
+                  <% def mock_name(ref_entry, ref, params):
+                        result = settings.relative_reference_name(entry_stack, ref, child_variable)
+                        if ':' not in ref.name:
+                            # The entry we are solving references another entry; we
+                            # have to check to see if we should solve that one too.
+                            dependency = (settings.get_reference_stack(entry_stack, ref.name.split('.')), result[1], ref.name)
+                            if dependency not in dependencies:
+                                dependencies.append(dependency)
+                        return result
+                        %>
+    ${solve(referenced, referenced.value, value_name, variable('mock %s' % name), mock_name)}
+                %endif
+              %endwhile
             %endif
         %endfor
         <% child_variable = '&%s' % child_variable %>
@@ -624,7 +650,7 @@ ${recursivePrint(entry, False)}
   %else:
     <% child_variable = "don't look here, move along." %>
   %endif
-  if (${prefix}${settings.encode_name(child.entry)}(${buffer_name}${encode_passed_params(entry, i, child_variable)}))
+    if (${prefix}${settings.encode_name(child.entry)}(${buffer_name}${encode_passed_params(entry, i, child_variable)}))
 </%def>
 
 <%def name="encodeField(entry)" buffered="True">
@@ -697,25 +723,19 @@ ${recursivePrint(entry, False)}
     %endif
 </%def>
 
-<%def name="solve(entry, expression, value_name, prefix)">
-    <%
-       magic_expression = expression
-       inputs = [p.name for p in raw_encode_params.get_params(entry) if p.direction == p.IN]
-       constant, components = solve_expression(magic_expression, expression, entry, raw_decode_params, inputs)
-       try:
-          constant = constant.evaluate({})
-       except UndecodedReferenceError:
-           pass
-    %>
+<%def name="solve(entry, expression, value_name, prefix, solved_name=None)">
+    <% solved_name = solved_name or settings.local_reference_name %>
+    <% constant, components = settings.breakup_expression(expression, entry) %>
     <% remainder = variable('%s remainder' % prefix) %>
-    ${settings._type_from_range(erange(expression, entry, raw_decode_params))} ${remainder} = ${value_name};
+    ${settings.type_from_range(erange(expression, entry, raw_decode_params))} ${remainder} = ${value_name};
     %if constant != 0:
     ${remainder} -= ${settings.value(entry, constant, encode_params)};
     %endif
     %for ref, expr, invert_expr in components:
-    <% variable_name = _value_ref(local_name(entry, ref.param_name()), entry, encode_params) %>
-    ${variable_name} = ${settings.value(entry, invert_expr, encode_params, magic_expression, remainder)};
-    ${remainder} -= ${settings.value(entry, expr, encode_params)};
+    <% is_temp, solve_name = solved_name(entry, ref, encode_params) %>
+    <% solve_type = '' if not is_temp else '%s ' % settings.type_from_range(erange(expr, entry, raw_decode_params)) %>
+    ${solve_type}${solve_name} = ${settings.value(entry, invert_expr, encode_params, expression, remainder)};
+    ${remainder} -= ${settings.value(entry, expr, encode_params, ref_name=solved_name)};
     %endfor
     if (${remainder} != 0)
     {
