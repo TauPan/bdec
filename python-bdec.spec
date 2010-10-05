@@ -9,7 +9,6 @@ BuildRoot:      %{_tmppath}/%{name}-%{version}-build
 Source:         ftp://example.org/%{name}-%{version}.tar.bz2
 PreReq:         %install_info_prereq
 
-%py_requires
 BuildRequires:  python-base, python-devel, python-setuptools
 Requires:       python-setuptools, python-mako, python-nose, python-pyparsing, python-xml
 
