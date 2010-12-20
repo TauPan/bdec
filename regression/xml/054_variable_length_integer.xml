@@ -1,7 +1,0 @@
-<protocol>
-    <sequence name="blah">
-        <field name="a" length="8" type="integer" />
-        <field name="b" length="(${a} * 8)" type="integer" />
-    </sequence>
-
-</protocol>

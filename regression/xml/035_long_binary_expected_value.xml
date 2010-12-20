@@ -1,7 +1,0 @@
-<protocol>
-    <sequence name="blah">
-        <field name="bob" length="42" value="0x185898d9197" />
-        <field name="extra" length="6" />
-    </sequence>
-
-</protocol>

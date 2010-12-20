@@ -1,8 +1,0 @@
-<protocol>
-    <sequence name="c">
-        <sequence name="">
-            <field name="" length="8" type="integer" />
-        </sequence>
-    </sequence>
-
-</protocol>

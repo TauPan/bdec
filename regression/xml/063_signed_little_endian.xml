@@ -1,3 +1,0 @@
-<protocol>
-    <field name="a" length="16" type="signed integer" encoding="little endian" />
-</protocol>

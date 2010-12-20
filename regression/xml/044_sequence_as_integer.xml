@@ -1,9 +1,0 @@
-<protocol>
-    <!--
-      Test that we can compile non-hidden sequences with hidden children.
-      -->
-    <sequence name="a" value="${a:}">
-        <field name="a:" length="8" type="integer" />
-    </sequence>
-
-</protocol>
