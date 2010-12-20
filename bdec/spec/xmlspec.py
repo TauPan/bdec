@@ -433,7 +433,7 @@ def _write_entry(gen, entry, common, end_entry):
         attributes.append(('name', entry.name))
     name = _handlers[type(entry)](entry, attributes)
     if entry.length is not None:
-	attributes.append(('length', str(entry.length)))
+        attributes.append(('length', str(entry.length)))
     for constraint in entry.constraints:
         if isinstance(constraint, Minimum):
             attributes.append(('min', str(constraint.limit)))

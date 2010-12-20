@@ -106,7 +106,11 @@ class Field(bdec.entry.Entry):
     BIG_ENDIAN = "big endian"
 
     def __init__(self, name, length, format=BINARY, encoding=None, constraints=[], attributes=None):
+<<<<<<< HEAD
         bdec.entry.Entry.__init__(self, name, length, [], constraints, attributes)
+=======
+        bdec.entry.Entry.__init__(self, name, length, [], constraints, attributes=attributes)
+>>>>>>> master
         assert format in self._formats
 
         if encoding is None:
