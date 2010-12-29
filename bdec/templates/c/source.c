@@ -1,4 +1,4 @@
-## vim:set syntax=mako:
+## vim: set syntax=mako filetype=mako:
 
 <%! 
   from bdec.choice import Choice
@@ -589,4 +589,385 @@ ${static}void ${settings.print_name(entry)}(unsigned int offset, const char* nam
 </%def>
 
 ${recursivePrint(entry, False)}
+
+
+
+### FUNCTIONS FOR ENCODING DATA
+
+
+
+
+<%def name="encodeField(entry)">
+    ${settings.ctype(entry)} value;
+  %if settings.is_numeric(settings.ctype(entry)):
+    %if entry.encoding == Field.LITTLE_ENDIAN:
+    value = encode_little_endian_integer(buffer, ${settings.value(entry, entry.length)});
+    %else:
+      %if EntryValueType(entry).range(raw_params).max <= 0xffffffff:
+    value = encode_integer(buffer, ${settings.value(entry, entry.length)});
+      %else:
+    value = encode_long_integer(buffer, ${settings.value(entry, entry.length)});
+      %endif
+    %endif
+    %if is_value_referenced(entry):
+    *${entry.name |variable} = value;
+    %endif
+  %elif entry.format == Field.TEXT:
+    unsigned int i;
+    value.length = ${settings.value(entry, entry.length)} / 8;
+    value.buffer = (char*)malloc(value.length + 1);
+    value.buffer[value.length] = 0;
+    for (i = 0; i < value.length; ++i)
+    {
+        value.buffer[i] = encode_integer(buffer, 8);
+    }
+  %elif entry.format == Field.HEX:
+    unsigned int i;
+    assert((${settings.value(entry, entry.length)}) % 8 == 0);
+    value.length = ${settings.value(entry, entry.length)} / 8;
+    value.buffer = (unsigned char*)malloc(value.length);
+    for (i = 0; i < value.length; ++i)
+    {
+        value.buffer[i] = encode_integer(buffer, 8);
+    }
+  %elif entry.format == Field.BINARY:
+    value.start_bit = buffer->start_bit;
+    value.num_bits = ${settings.value(entry, entry.length)};
+    unsigned int numBytes = (buffer->start_bit + buffer->num_bits + 7) / 8;
+    value.buffer = (unsigned char*)malloc(numBytes);
+    memcpy(value.buffer, buffer->buffer, numBytes);
+    buffer->start_bit += value.num_bits;
+    buffer->buffer += buffer->start_bit / 8;
+    buffer->start_bit %= 8;
+    buffer->num_bits -= value.num_bits;
+
+    %if is_value_referenced(entry):
+    *${entry.name |variable} = ${get_integer(entry)}(&value);
+    %endif
+  %elif entry.format == Field.FLOAT:
+    <% encoding = 'BDEC_LITTLE_ENDIAN' if entry.encoding == Field.LITTLE_ENDIAN \
+         else 'BDEC_BIG_ENDIAN' %>
+
+    switch (${settings.value(entry, entry.length)})
+    {
+    case 32:
+        value = encodeFloat(buffer, ${encoding});
+        break;
+    case 64:
+        value = encodeDouble(buffer, ${encoding});
+        break;
+    default:
+        return 0;
+    }
+  %else:
+    <% raise Exception('Unknown field type %s' % entry) %>
+  %endif
+    ${checkConstraints(entry, 'value', '&value')}
+    %if contains_data(entry):
+    (*result) = value;
+    %else:
+      %if entry.format != Field.INTEGER:
+    ${settings.free_name(entry)}(&value);
+      %endif
+    %endif
+</%def>
+
+<%def name="encodeSequence(entry)">
+    %for i, child in enumerate(entry.children):
+    if (!${settings.encode_name(child.entry)}(buffer${settings.call_params(entry, i, '&result->%s' % settings.var_name(entry, i))}))
+    {
+        %for j, previous in enumerate(entry.children[:i]):
+            %if child_contains_data(previous):
+        ${settings.free_name(previous.entry)}(&result->${settings.var_name(entry, j)});
+            %endif
+        %endfor
+        return 0;
+    }
+    %endfor
+    %if entry.value is not None:
+    ${ctype(EntryValueType(entry))} value = ${settings.value(entry, entry.value)};
+    ${checkConstraints(entry, 'value', 'result')}
+      %if contains_data(entry):
+        %if settings.is_numeric(settings.ctype(entry)):
+    *result = value;
+        %else:
+    result->value = value;
+        %endif
+      %endif
+      %if is_value_referenced(entry):
+    *${entry.name |variable} = value;
+      %endif
+    %endif
+</%def>
+
+<%def name="encodeSequenceOf(entry)">
+    <% child_type = settings.ctype(entry.children[0].entry) %>
+    %if entry.end_entries:
+    ${'should end'|variable} = 0;
+    %endif
+
+    %if entry.count is not None:
+    ## There is a 'count' avaiable; use that to allocate the buffer up front.
+    unsigned int i;
+    unsigned int num_items;
+    num_items = ${settings.value(entry, entry.count)};
+      %if contains_data(entry):
+    result->count = num_items;
+        %if child_contains_data(entry.children[0]):
+    result->items = (${child_type}*)malloc(sizeof(${child_type}) * result->count);
+        %endif
+      %endif
+    for (i = 0; i < num_items; ++i)
+    {
+    %else:
+      ## There isn't a count, so keep decoding until we run out of data.
+      %if contains_data(entry):
+    unsigned int i;
+        %if child_contains_data(entry.children[0]):
+    result->items = 0;
+        %endif
+    result->count = 0;
+      %endif
+      %if entry.end_entries:
+    while (!${'should end' |variable})
+      %else:
+    while (buffer->num_bits > 0)
+      %endif
+    {
+      %if contains_data(entry):
+        i = result->count;
+        ++result->count;
+        %if child_contains_data(entry.children[0]):
+        result->items = (${child_type}*)realloc(result->items, sizeof(${child_type}) * (result->count));
+        %endif
+      %endif
+    %endif
+
+      ## Check for the 'should end' happening early
+      %if entry.end_entries:
+        <% validate_end = '%s || ' % variable('should end') %>
+    %else:
+        <% validate_end = '' %>
+      %endif
+
+        if (${validate_end}!${settings.encode_name(entry.children[0].entry)}(buffer${settings.call_params(entry, 0, '&result->items[i]')}))
+        {
+      %if child_contains_data(entry.children[0]):
+            unsigned int j;
+            for (j=0; j< i; ++j)
+            {
+                ${settings.free_name(entry.children[0].entry)}(&result->items[j]);
+            }
+            free(result->items);
+      %endif
+            return 0;
+        }
+    }
+
+      %if entry.end_entries:
+    if (!${'should end'|variable})
+    {
+        // The data finished without receiving an 'end sequence'!
+        %if contains_data(entry):
+        ${settings.free_name(entry)}(result);
+        %endif
+        return 0;
+    }
+      %endif
+
+</%def>
+
+<%def name="encodeChoice(entry)">
+    %if contains_data(entry):
+    memset(result, 0, sizeof(${settings.ctype(entry)}));
+    %endif
+    BitBuffer temp;
+    <% names = esc_names(('temp %s' % c.name for c in entry.children), variable) %>
+    %for i, child in enumerate(entry.children):
+      %if child_contains_data(child) and (is_recursive(entry, child.entry) or not contains_data(entry)):
+    ${settings.ctype(child.entry)} ${names[i]};
+      %endif
+    %endfor
+    %for i, child in enumerate(entry.children):
+      %if is_recursive(entry, child.entry) or not contains_data(entry):
+    <% temp_name = names[i] %>
+      %else:
+    <% temp_name = 'result->value.' + settings.var_name(entry, i) %>
+      %endif
+    <% if_ = "if" if i == 0 else 'else if' %>
+    ${if_} (temp = *buffer, ${settings.encode_name(child.entry)}(&temp${settings.call_params(entry, i, "&%s" % temp_name)}))
+    {
+      %for name, temp in settings.option_output_temporaries(entry, i).items():
+        %if name not in [local.name for local in local_vars(entry)]:
+        *${name} = ${temp};
+        %else:
+        ${name} = ${temp};
+        %endif
+      %endfor
+      %if contains_data(entry):
+          %if settings.children_contain_data(entry):
+        result->option = ${settings.enum_value(entry, i)};
+          %else:
+        *result = ${settings.enum_value(entry, i)};
+          %endif
+      %endif
+        *buffer = temp;
+      %if child_contains_data(child) and is_recursive(entry, child.entry):
+        <% child_type = settings.ctype(child.entry) %>
+        result->value.${settings.var_name(entry, i)} = (${child_type}*)malloc(sizeof(${child_type}));
+        *result->value.${settings.var_name(entry, i)} = ${temp_name};
+      %endif
+    }
+    %endfor
+    else
+    {
+        /* Encode failed, no options succeeded... */
+        return 0;
+    }
+</%def>
+
+
+## Recursively create functions for dumping the containing data from a format into a BitBuffer.
+<%def name="recursiveEncode(entry, is_static=True)">
+%for child in entry.children:
+  %if child.entry not in common:
+${recursiveEncode(child.entry)}
+  %endif
+%endfor
+
+<% static = "static " if is_static else "" %>
+
+${static}int ${settings.encode_name(entry)}(struct ${settings.ctype(entry)}* data, BitBuffer* buffer)
+{
+  %for local in settings.local_variables(entry):
+    ${settings.ctype(local.type)} ${local.name};
+  %endfor
+  %if is_length_referenced(entry):
+    unsigned int ${'initial length' |variable} = buffer->num_bits;
+  %endif
+  %if entry.length is not None:
+    <% length = variable(entry.name + " expected length") %>
+    unsigned int ${length} = ${settings.value(entry, entry.length)};
+    unsigned int ${'unused number of bits' |variable} = buffer->num_bits - ${length};
+    if (${length} > buffer->num_bits)
+    {
+        /* Not enough data */
+        return 0;
+    }
+    buffer->num_bits = ${length};
+  %endif
+  %if isinstance(entry, Field):
+    ${encodeField(entry)}
+  %elif isinstance(entry, Sequence):
+    ${encodeSequence(entry)}
+  %elif isinstance(entry, SequenceOf):
+    ${encodeSequenceOf(entry)}
+  %elif isinstance(entry, Choice):
+    ${encodeChoice(entry)}
+  %endif
+  %if is_end_sequenceof(entry):
+    *${'should end' |variable} = 1;
+  %endif
+  %if entry.length is not None:
+    if (buffer->num_bits != 0)
+    {
+        /* The entry didn't use all of the data */
+      %if contains_data(entry):
+        ${settings.free_name(entry)}(result);
+      %endif
+        return 0;
+    }
+    buffer->num_bits = ${'unused number of bits' |variable};
+  %endif
+  %if is_length_referenced(entry):
+    *${entry.name + ' length' |variable} = ${'initial length' |variable} - buffer->num_bits;
+  %endif
+    return 1;
+}
+</%def>
+
+${recursiveEncode(entry, False)}
+
+
+### GENERATE FUCNTIONS FOR FIELD ELEMENTS
+
+<%def name="recursiveFieldMethods(entry, struct_type)">
+%for child in entry.children:
+  %if child.entry not in common:
+${recursiveFieldMethods(child.entry, struct_type)}
+  %endif
+%endfor
+
+%if isinstance(entry, Field):
+## TOSTRING function
+int ${settings.tostring_name(entry)}(${settings.ctype(entry)} *data, char **result) {
+    int rval = 0;
+    char *string = &result;
+  %if settings.is_numeric(settings.ctype(entry)):
+    %if entry.encoding == Field.LITTLE_ENDIAN:
+      <% pass %>
+    %elif EntryValueType(entry).range(raw_params).max <= 0xffffffff:
+    string = calloc(11, sizeof(char));
+        %if settings.ctype(entry) in settings.unsigned_types:
+    rval = snprintf(string, 11, "%u", &data);
+        %else:
+    rval = snprintf(string, 11, "%i", &data);
+        %endif
+    rval = rval > 0;
+    %else:
+      <% pass %>
+    %endif
+  %elif entry.format == Field.TEXT:
+    string = calloc((data->length)+1, sizeof(char));
+    rval = snprintf(string, (data->length)+1, "%s", data->buffer);
+    rval = rval == (data->length)+1;
+  %elif entry.format == Field.HEX:
+    <% pass %>
+  %elif entry.format == Field.BINARY:
+    // stolen from http://stackoverflow.com/questions/111928/is-there-a-printf-converter-to-print-in-binary-format
+    string = calloc((data->num_bits)+1, sizeof(char));
+    char s[(data->num_bits)+1];
+    int i=data->num_bits;
+    s[i--]=0x00; // terminate string
+    do {
+        s[i--] = (x & 1) ? '1' : '0';
+        x >>= 1; // shift right 1 bit
+    } while( x > 0);
+    while(i >= 0) {
+        s[i--] = '0'; // fill with 0's
+    }
+    rval = snprintf(string, "%s", s);
+    rval = rval == (data->num_bits)+1;
+  %elif entry.format == Field.FLOAT:
+    string = calloc(11, sizeof(char));
+    rval = snprintf(string, 11, "%f", &data);
+    rval = rval > 0;
+  %else:
+    <% raise Exception('Unknown field type %s' % entry) %>
+  %endif
+    return rval;
+}
+
+## STRINGTO function
+int ${settings.stringto_name(entry)}(const char *string, ${settings.ctype(entry)} *result) {
+  %if settings.is_numeric(settings.ctype(entry)):
+    <% pass %>
+  %elif entry.format == Field.TEXT:
+    <% pass %>
+  %elif entry.format == Field.HEX:
+    <% pass %>
+  %elif entry.format == Field.BINARY:
+    <% pass %>
+  %elif entry.format == Field.FLOAT:
+    <% pass %>
+  %else:
+    <% raise Exception('Unknown field type %s' % entry) %>
+  %endif
+}
+%endif
+</%def>
+
+${recursiveFieldMethods(entry, settings.ctype(entry))}
+
+
 
