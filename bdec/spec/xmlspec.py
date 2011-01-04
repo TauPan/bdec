@@ -277,10 +277,10 @@ class _Handler(xml.sax.handler.ContentHandler):
             # have to know about these types.
             try:
                 if encoding in [None, fld.Field.BIG_ENDIAN]:
-                    integer = self._integers.signed_big_endian(length)
+                    integer = self._integers.signed_big_endian(length, attributes=attributes)
                 else:
                     assert encoding == fld.Field.LITTLE_ENDIAN
-                    integer = self._integers.signed_litte_endian(length)
+                    integer = self._integers.signed_litte_endian(length, attributes=attributes)
             except IntegerError, error:
                 raise self._error(str(error))
             return self._references.get_common(name, integer.name)
