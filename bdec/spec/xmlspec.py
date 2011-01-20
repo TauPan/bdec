@@ -194,7 +194,8 @@ class _Handler(xml.sax.handler.ContentHandler):
             self.lookup[not_present] = (self._filename, lineno, colno)
             self.lookup[entry] = (self._filename, lineno, colno)
 
-            optional = chc.Choice('optional %s' % entry_name, [not_present, entry], attributes=attrs)
+            name = 'optional %s' % entry_name if entry_name else 'optional:'
+            optional = chc.Choice(name, [not_present, entry], attributes=attrs)
             entry = optional
 
         if entry is not None:
@@ -444,7 +445,7 @@ def _write_entry(gen, entry, common, end_entry):
         attributes.append(('name', entry.name))
     name = _handlers[type(entry)](entry, attributes)
     if entry.length is not None:
-	attributes.append(('length', str(entry.length)))
+        attributes.append(('length', str(entry.length)))
     for constraint in entry.constraints:
         if isinstance(constraint, Minimum):
             attributes.append(('min', str(constraint.limit)))
