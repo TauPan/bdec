@@ -51,10 +51,10 @@ class Integers:
         try:
             result = self.common[name]
         except KeyError:
-            is_signed = Field('signed:', 1)
-            value = Field('integer value:', ArithmeticExpression(operator.sub, length_expr, Constant(1)))
+            is_signed = Field('signed:', 1, attributes=attributes)
+            value = Field('integer value:', ArithmeticExpression(operator.sub, length_expr, Constant(1), attributes=attributes))
             expression = compile('${signed:} * ((0 - 1) << (%s - 1)) + ${integer value:}' % (length_expr))
-            result = Sequence(name, [is_signed, value], value=expression)
+            result = Sequence(name, [is_signed, value], value=expression, attributes=attributes)
             self.common[name] = result
         return result
 

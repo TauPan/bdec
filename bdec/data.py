@@ -111,7 +111,7 @@ class BadTextEncodingError(DataError):
         self.encoding = encoding
 
     def __str__(self):
-        return "'%s' can't convert %s" % (self.encoding, self.data)
+        return "'%s' can't convert '%s'" % (self.encoding, self.data)
 
 class _OutOfDataError(Exception):
     """Not derived from DataError as this is an internal error."""
@@ -226,7 +226,7 @@ class _MemoryBuffer(_ByteBuffer):
 class Data(object):
     """
     A class to hold information about data to be decoded.
-    
+
     The data is not actually validated to be available until it is used, at
     which stage NotEnoughDataError can be thrown.
     """
@@ -243,7 +243,7 @@ class Data(object):
 
         # Note: We can detect the length of string and empty buffers at
         # initialisation time; it is a speed win to do so. However, that means
-        # data objects behave differently depending on what they were 
+        # data objects behave differently depending on what they were
         # constructed from (a source of bugs) (eg: verification of length
         # at pop time, as opposed to read time).
         if isinstance(buffer, str):
@@ -259,7 +259,7 @@ class Data(object):
                 # This file doesn't appear to support seeking
                 self._buffer = _NonSeekingFileBuffer(buffer)
         else:
-            raise Exception("Unknown data source '%s'" % type(buffer)) 
+            raise Exception("Unknown data source '%s'" % type(buffer))
 
         if start is None:
             start = 0
@@ -309,7 +309,7 @@ class Data(object):
         If the data length isn't a multiple of 8 bits, a DataError will be
         raised. If the data cannot be converted to the given encoding, a
         BadTextEncodingError error will be raised.
-        
+
         encoding -- The unicode encoding the data is in. """
         try:
             return unicode(self.bytes(), encoding)
@@ -444,7 +444,7 @@ class Data(object):
             num_bytes = len(self._buffer)
             available_bits = num_bytes * 8 - self._start
             raise NotEnoughDataError(length, available_bits)
-        
+
     def __int__(self):
         """
         Convert the buffer to an integer
@@ -629,7 +629,7 @@ class Data(object):
     @staticmethod
     def from_int_little_endian(value, length):
         """Create a data object from an integer.
-        
+
         length -- The length in bits of the data buffer to create."""
         data = int(value)
         if length % 8 != 0:
@@ -645,7 +645,7 @@ class Data(object):
     @staticmethod
     def from_int_big_endian(value, length):
         """Create a data object from an integer.
-        
+
         length -- The length in bits of the data buffer to create."""
         data = int(value)
         chars = []
@@ -668,14 +668,14 @@ class Data(object):
         return result
 
     @staticmethod
-    def from_hex(hex): 
+    def from_hex(hex):
         """
         Convert a hex string to a data buffer.
 
         The hex entries can be seperated by whitespace, with multi-byte entries
         seperated on even characters.  For example, '0e 9a bc', or '0e9abc'.
 
-        Entries without whitespace with an odd number of characters will be 
+        Entries without whitespace with an odd number of characters will be
         treated as if it had a leading zero; eg: 'e02' will be interpreted as
         being the two byte value '0e02'.
         """
