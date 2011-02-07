@@ -195,7 +195,7 @@ class _Handler(xml.sax.handler.ContentHandler):
             self.lookup[entry] = (self._filename, lineno, colno)
 
             name = 'optional %s' % entry_name if entry_name else 'optional:'
-            optional = chc.Choice(name, [not_present, entry])
+            optional = chc.Choice(name, [not_present, entry], attributes=attrs)
             entry = optional
 
         if entry is not None:
@@ -278,16 +278,16 @@ class _Handler(xml.sax.handler.ContentHandler):
             # have to know about these types.
             try:
                 if encoding in [None, fld.Field.BIG_ENDIAN]:
-                    integer = self._integers.signed_big_endian(length)
+                    integer = self._integers.signed_big_endian(length, attributes=attributes)
                 else:
                     assert encoding == fld.Field.LITTLE_ENDIAN
-                    integer = self._integers.signed_litte_endian(length)
+                    integer = self._integers.signed_litte_endian(length, attributes=attributes)
             except IntegerError, error:
                 raise self._error(str(error))
             return self._references.get_common(name, integer.name)
 
         # We'll create the field, then use it to create the expected value.
-        result = fld.Field(name, length, format, encoding)
+        result = fld.Field(name, length, format, encoding, attributes=attributes)
         if attributes.has_key('value'):
             # Get the correct object type by encoding, then decoding, the text
             # value.
@@ -325,12 +325,12 @@ class _Handler(xml.sax.handler.ContentHandler):
         if attributes.has_key('value'):
             # A sequence can have a value derived from its children...
             value = self._parse_expression(attributes['value'])
-        return seq.Sequence(name, children, value, length)
+        return seq.Sequence(name, children, value, length, attributes=attributes)
 
     def _choice(self, attributes, children, name, length, breaks):
         if len(children) == 0:
             raise self._error("Choice '%s' must have children! Should this be a 'reference' entry?" % attributes['name'])
-        return chc.Choice(name, children, length)
+        return chc.Choice(name, children, length, attributes=attributes)
 
     def _sequenceof(self, attributes, children, name, length, breaks):
         if len(children) == 0:
@@ -342,7 +342,7 @@ class _Handler(xml.sax.handler.ContentHandler):
         count = None
         if attributes.has_key('count'):
             count = self._parse_expression(attributes['count'])
-        result = sof.SequenceOf(name, children[0], count, length, breaks)
+        result = sof.SequenceOf(name, children[0], count, length, breaks, attributes=attributes)
         return result
 
 

@@ -55,7 +55,7 @@ class SequenceOf(bdec.entry.Entry):
     ITERATING = "iterating"
     STOPPING = "stopping"
 
-    def __init__(self, name, child, count, length=None, end_entries=[]):
+    def __init__(self, name, child, count, length=None, end_entries=[], attributes=None):
         """
         count -- The number of times the child will repeat. If this value is
           None, the count will not be used.
@@ -67,7 +67,7 @@ class SequenceOf(bdec.entry.Entry):
         If neither count, length, or end_entries are used, the SequenceOf will
         fail to decode after using all of the available buffer.
         """
-        bdec.entry.Entry.__init__(self, name, length, [child])
+        bdec.entry.Entry.__init__(self, name, length, [child], attributes=attributes)
         if isinstance(count, int):
             count = Constant(count)
         assert count is None or isinstance(count, Expression)
